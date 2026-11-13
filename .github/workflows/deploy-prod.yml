@@ -77,7 +77,9 @@ jobs:
             docker compose -f deploy/compose.prod.yml up -d --build --remove-orphans
             ok=0
             for i in $(seq 1 30); do
-              if curl -fsS http://127.0.0.1:80/ >/dev/null; then ok=1; break; fi
+              # frontend has no host port published (shared nginx proxies to it
+              # over app_network by container name), so check from inside it.
+              if docker compose -f deploy/compose.prod.yml exec -T frontend wget -qO- http://127.0.0.1/ >/dev/null 2>&1; then ok=1; break; fi
               sleep 2
             done
             if [ "$ok" != 1 ]; then
