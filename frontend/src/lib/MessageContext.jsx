@@ -53,10 +53,19 @@ export function MessageProvider({ children }) {
     }
   }, [])
 
+  const clearMessages = useCallback(async () => {
+    setMessages([])
+    try {
+      await fetch('/api/messages', { method: 'DELETE' })
+    } catch {
+      /* ignore network errors */
+    }
+  }, [])
+
   const unreadCount = messages.filter((m) => !m.read).length
 
   return (
-    <MessageContext.Provider value={{ messages, unreadCount, pushMessage, markRead, markAllRead }}>
+    <MessageContext.Provider value={{ messages, unreadCount, pushMessage, markRead, markAllRead, clearMessages }}>
       {children}
     </MessageContext.Provider>
   )

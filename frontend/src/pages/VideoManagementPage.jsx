@@ -385,7 +385,7 @@ function VideoManagementPage() {
         </Button>
         <Button
           type="button"
-          variant={batchScraping ? 'destructive' : 'default'}
+          variant={batchScraping ? 'destructive' : 'outline'}
           size="sm"
           onClick={handleBatchScrapeClick}
           disabled={clearing || uploading || (!batchScraping && rows.length === 0)}
@@ -484,7 +484,7 @@ function VideoManagementPage() {
             <SelectItem value="抓取失败">抓取失败</SelectItem>
           </SelectContent>
         </Select>
-        <Button type="submit" size="sm">查询</Button>
+        <Button type="submit" variant="outline" size="sm">查询</Button>
         <Button type="button" variant="outline" size="sm" onClick={handleFilterReset}>重置</Button>
       </form>
 
