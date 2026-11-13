@@ -15,6 +15,8 @@ enum class ScrapeFailureReason {
     REMOVED,
     PRIVATE,
     DELETED,
+    // TikTok 对发起请求的 IP 做了限流/封禁，与视频内容状态无关，批量抓取应立即停止退避
+    BLOCKED,
     OTHER,
 }
 
@@ -22,6 +24,7 @@ fun ScrapeFailureReason.toStatusLabel(): String = when (this) {
     ScrapeFailureReason.REMOVED -> "已下架"
     ScrapeFailureReason.PRIVATE -> "私密"
     ScrapeFailureReason.DELETED -> "已删除"
+    ScrapeFailureReason.BLOCKED -> "抓取失败"
     ScrapeFailureReason.OTHER -> "抓取失败"
 }
 
@@ -164,6 +167,7 @@ class YtDlpService(
     private fun classifyFailure(message: String): ScrapeFailureReason {
         val lower = message.lowercase()
         return when {
+            "blocked" in lower -> ScrapeFailureReason.BLOCKED
             "private" in lower -> ScrapeFailureReason.PRIVATE
             "not found" in lower || "404" in lower || "doesn't exist" in lower || "does not exist" in lower -> ScrapeFailureReason.DELETED
             "unavailable" in lower || "removed" in lower || "violat" in lower || "no longer available" in lower -> ScrapeFailureReason.REMOVED
