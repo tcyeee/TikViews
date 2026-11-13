@@ -28,3 +28,11 @@ CREATE TABLE IF NOT EXISTS video_table_settings (
 
 CREATE INDEX IF NOT EXISTS idx_excel_import_rows_import_id
     ON excel_import_rows(import_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    level TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    is_read INTEGER NOT NULL DEFAULT 0
+);
