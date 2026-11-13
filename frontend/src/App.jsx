@@ -5,6 +5,7 @@ import ExcelTablePage from './pages/ExcelTablePage.jsx'
 function App() {
   const [backendResult, setBackendResult] = useState('')
   const [input, setInput] = useState('')
+  const [proxy, setProxy] = useState(() => localStorage.getItem('ytdlpProxy') || '')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
@@ -68,6 +69,12 @@ function App() {
     }
   }
 
+  const handleProxyChange = (e) => {
+    const value = e.target.value
+    setProxy(value)
+    localStorage.setItem('ytdlpProxy', value)
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!input.trim()) return
@@ -78,7 +85,7 @@ function App() {
       const res = await fetch('/api/ytdlp/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: input.trim() }),
+        body: JSON.stringify({ input: input.trim(), proxy: proxy.trim() || null }),
       })
       if (!res.ok) {
         const text = await res.text()
@@ -122,6 +129,18 @@ function App() {
         <p style={{ color: 'var(--text)' }}>
           仅用于测试：输入 TikTok 视频 ID（19 位数字）或完整视频链接，验证后端能否通过 yt-dlp 成功取得该视频的播放量等信息。
         </p>
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ display: 'block', fontSize: 13, color: 'var(--text)', marginBottom: 4 }}>
+            代理地址（可选，例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080）
+          </label>
+          <input
+            type="text"
+            value={proxy}
+            onChange={handleProxyChange}
+            placeholder="留空则不使用代理"
+            style={{ width: '100%', padding: '8px 12px', fontSize: 14, boxSizing: 'border-box' }}
+          />
+        </div>
         <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8 }}>
           <input
             type="text"
@@ -160,6 +179,28 @@ function App() {
               </ul>
             ) : (
               <p style={{ whiteSpace: 'pre-wrap', color: '#c0392b' }}>{result.errorMessage}</p>
+            )}
+
+            {Array.isArray(result.logs) && result.logs.length > 0 && (
+              <details open style={{ marginTop: 16 }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>抓取日志（{result.logs.length} 条）</summary>
+                <pre
+                  style={{
+                    marginTop: 8,
+                    maxHeight: 400,
+                    overflow: 'auto',
+                    background: '#1e1e1e',
+                    color: '#d4d4d4',
+                    padding: 12,
+                    borderRadius: 6,
+                    fontSize: 12,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {result.logs.join('\n')}
+                </pre>
+              </details>
             )}
           </section>
         )}
