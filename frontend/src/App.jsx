@@ -10,7 +10,7 @@ function App() {
   const [error, setError] = useState('')
 
   const [excelImport, setExcelImport] = useState(null)
-  const [excelError, setExcelError] = useState('')
+  const [excelLogs, setExcelLogs] = useState([])
   const [excelUploading, setExcelUploading] = useState(false)
   const fileInputRef = useRef(null)
 
@@ -24,22 +24,30 @@ function App() {
     if (!file) return
 
     setExcelUploading(true)
-    setExcelError('')
+    const log = (level, message) => setExcelLogs((entries) => [...entries, { id: `${Date.now()}-${Math.random()}`, time: new Date().toLocaleTimeString(), level, message }])
+    log('info', `开始导入文件：${file.name}（${(file.size / 1024).toFixed(1)} KB）`)
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), 60_000)
     try {
       const formData = new FormData()
       formData.append('file', file)
       const res = await fetch('/api/excel/import', {
         method: 'POST',
         body: formData,
+        signal: controller.signal,
       })
-      const data = await res.json()
+      let data
+      try { data = await res.json() } catch { throw new Error(`服务器返回了无法读取的响应（HTTP ${res.status}）`) }
       if (!res.ok) {
-        throw new Error(data.message || `上传失败（${res.status}）`)
+        throw new Error(data.message || data.error || `上传失败（HTTP ${res.status}）`)
       }
+      if (!Array.isArray(data.rows)) throw new Error('服务器响应缺少有效的 rows 数据')
+      log('success', `导入成功：读取到 ${data.rows.length} 条记录`)
       setExcelImport({ fileName: file.name, rows: data.rows })
     } catch (err) {
-      setExcelError(err.message || '上传失败')
+      log('error', err.name === 'AbortError' ? '导入超时：等待服务器响应超过 60 秒，请重试' : `导入失败：${err.message || '未知错误'}`)
     } finally {
+      window.clearTimeout(timeoutId)
       setExcelUploading(false)
     }
   }
@@ -49,6 +57,7 @@ function App() {
       <ExcelTablePage
         fileName={excelImport.fileName}
         rows={excelImport.rows}
+        logs={excelLogs}
         onBack={() => setExcelImport(null)}
       />
     )
@@ -114,7 +123,7 @@ function App() {
         <button type="button" className="counter" onClick={handleExcelButtonClick} disabled={excelUploading}>
           {excelUploading ? '导入中…' : 'Excel 导入'}
         </button>
-        {excelError && <p style={{ color: '#c0392b', marginTop: 8 }}>导入失败：{excelError}</p>}
+        <ExcelImportLog logs={excelLogs} />
       </div>
 
       <section style={{ width: '100%', maxWidth: 640, textAlign: 'left' }}>
@@ -169,3 +178,14 @@ function App() {
 }
 
 export default App
+
+function ExcelImportLog({ logs }) {
+  if (!logs.length) return null
+  const colors = { info: 'var(--text)', success: '#2e7d32', error: '#c0392b' }
+  return <section aria-live="polite" style={{ marginTop: 12, maxWidth: 640, textAlign: 'left' }}>
+    <h3 style={{ margin: '8px 0' }}>Excel 导入日志</h3>
+    <ul style={{ margin: 0, padding: '10px 12px 10px 36px', border: '1px solid var(--border)', borderRadius: 8 }}>
+      {logs.map((entry) => <li key={entry.id} style={{ color: colors[entry.level], margin: '4px 0' }}><time>{entry.time}</time>　{entry.message}</li>)}
+    </ul>
+  </section>
+}
