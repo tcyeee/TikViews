@@ -3,7 +3,7 @@ import './App.css'
 import { Button } from '@/components/ui/button'
 import VideoManagementPage from './pages/VideoManagementPage.jsx'
 import VideoScrapeTestPage from './pages/VideoScrapeTestPage.jsx'
-import { useDynamicFavicon } from './lib/useDynamicFavicon.js'
+import LoginPage from './pages/LoginPage.jsx'
 import { MessageProvider } from './lib/MessageContext.jsx'
 import MessageCenter from './components/MessageCenter.jsx'
 import { track } from './lib/analytics.js'
@@ -129,8 +129,6 @@ function AppContent() {
 }
 
 function AboutPage() {
-  useDynamicFavicon()
-
   return (
     <main className="about-page">
       <div className="about-grid-bg" aria-hidden="true" />
@@ -198,6 +196,22 @@ function AppNavigation({ backendOnline, page, onNavigate }) {
 }
 
 function App() {
+  const [authState, setAuthState] = useState('checking')
+
+  useEffect(() => {
+    fetch('/api/auth/check')
+      .then((response) => setAuthState(response.ok ? 'authenticated' : 'unauthenticated'))
+      .catch(() => setAuthState('unauthenticated'))
+  }, [])
+
+  if (authState === 'checking') {
+    return null
+  }
+
+  if (authState === 'unauthenticated') {
+    return <LoginPage onSuccess={() => setAuthState('authenticated')} />
+  }
+
   return (
     <MessageProvider>
       <AppContent />
