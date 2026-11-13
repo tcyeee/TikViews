@@ -1,6 +1,7 @@
 package com.tikviews.backend.message
 
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -34,6 +35,12 @@ class MessageController(private val messageRepository: MessageRepository) {
     @PostMapping("/read-all")
     fun markAllRead(): ResponseEntity<Any> {
         messageRepository.markAllRead()
+        return ResponseEntity.ok().build()
+    }
+
+    @DeleteMapping
+    fun clearAll(): ResponseEntity<Any> {
+        messageRepository.deleteAll()
         return ResponseEntity.ok().build()
     }
 }
