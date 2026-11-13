@@ -46,6 +46,11 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
+  /* Legacy page tokens used by the original home and import screens. */
+  --text: var(--muted-foreground);
+  --text-h: var(--foreground);
+  --accent-bg: var(--secondary);
+  --accent-border: var(--ring);
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
   color: var(--foreground);
   background: var(--background);
@@ -55,6 +60,14 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
-#root { width: 1126px; max-width: 100%; min-height: 100svh; margin: 0 auto; border-inline: 1px solid var(--border); }
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; color: var(--foreground); background: var(--background); }
+#root { width: 100%; min-height: 100svh; color: var(--foreground); }
+#root :where(h1, h2, h3, p, label, li, td, th, summary, strong, time) { color: inherit; }
+
+/* Tailwind Preflight clears native control styling; restore a consistent app baseline. */
+button, input { font: inherit; }
+button { color: var(--foreground); cursor: pointer; }
+button:disabled { cursor: wait; opacity: .65; }
+input { color: var(--foreground); background: var(--background); border: 1px solid var(--input); border-radius: var(--radius-sm); }
+input:focus-visible, button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
