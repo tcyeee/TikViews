@@ -62,7 +62,7 @@ class ExcelImportRepository(private val jdbcTemplate: JdbcTemplate) {
             publish_time = COALESCE(?, publish_time), vv = COALESCE(?, vv), scrape_status = '已抓取', scraped_at = ? WHERE id = ?""",
             title, videoId, uploadDate, views?.toString(), Instant.now().toString(), id) > 0
 
-    fun findTableSettings(): List<Map<String, Any>> = jdbcTemplate.queryForList("SELECT column_key AS key, visible, width FROM video_table_settings")
+    fun findTableSettings(): List<Map<String, Any?>> = jdbcTemplate.queryForList("SELECT column_key AS key, visible, width FROM video_table_settings")
 
     @Transactional
     fun saveTableSettings(settings: List<VideoTableSetting>) {
