@@ -9,6 +9,8 @@ services:
       # Server can't reach TikTok directly, so yt-dlp goes through the shared
       # clash proxy container on app_network.
       YTDLP_PROXY: http://clash:7890
+      # 登录密码，4 位数字，建议在部署服务器的 .env 中覆盖默认值
+      APP_PASSWORD: ${APP_PASSWORD:-1122}
     volumes:
       - tikviews-data:/data
     networks:
