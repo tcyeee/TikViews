@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    volumes:
+      - tikviews-data:/data
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${TIKVIEWS_PORT:-80}:80"
+    depends_on:
+      - backend
+
+volumes:
+  tikviews-data:
