@@ -83,7 +83,7 @@
     linear-gradient(to right, color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px),
     linear-gradient(to bottom, color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px);
   background-size: 44px 44px;
-  animation: about-grid-drift 40s linear infinite;
+  animation: about-grid-drift 4.444s linear infinite;
 }
 
 @keyframes about-grid-drift {
@@ -93,6 +93,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .about-grid-bg { animation: none; }
+  .about-icon { animation: none; }
 }
 
 .about-page > :not(.about-grid-bg) {
@@ -100,8 +101,20 @@
   z-index: 1;
 }
 
-.about-icon { width: 88px; height: 88px; object-fit: contain; border-radius: 20px; }
-.about-page h1 { margin: 0; font-size: clamp(24px, 4vw, 36px); letter-spacing: -0.04em; }
+.about-icon {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  border-radius: 20px;
+  animation: about-icon-float 3s ease-in-out infinite;
+}
+
+@keyframes about-icon-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.about-page h1 { margin: 0; font-size: clamp(21.6px, 3.6vw, 32.4px); letter-spacing: -0.04em; }
 .about-page p { max-width: 560px; margin: 0; color: var(--text); line-height: 1.8; }
 .about-author { width: min(100%, 560px); margin-top: 8px; padding: 22px 24px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); }
 .about-author h2 { margin: 0 0 14px; font-size: 16px; }

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import VideoManagementPage from './pages/VideoManagementPage.jsx'
+import VideoScrapeTestPage from './pages/VideoScrapeTestPage.jsx'
 import { useDynamicFavicon } from './lib/useDynamicFavicon.js'
 
 function pageFromPath(pathname) {
-  if (pathname === '/videos') return 'videos'
+  if (pathname === '/' || pathname === '/videos') return 'videos'
   if (pathname === '/about') return 'about'
+  if (pathname === '/scrape-test') return 'scrape-test'
   return 'home'
 }
 
@@ -13,10 +15,6 @@ function App() {
   const [page, setPage] = useState(() => pageFromPath(window.location.pathname))
   const [backendResult, setBackendResult] = useState('')
   const [backendOnline, setBackendOnline] = useState(false)
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState('')
 
   useEffect(() => {
     const onPopState = () => setPage(pageFromPath(window.location.pathname))
@@ -87,6 +85,10 @@ function App() {
     return <><AppNavigation backendOnline={backendOnline} page={page} onNavigate={navigate} /><AboutPage /></>
   }
 
+  if (page === 'scrape-test') {
+    return <><AppNavigation backendOnline={backendOnline} page={page} onNavigate={navigate} /><VideoScrapeTestPage /></>
+  }
+
   const testBackend = async () => {
     setBackendResult('Loading...')
     try {
@@ -98,30 +100,6 @@ function App() {
       setBackendResult(`${data.message} (${data.timestamp})`)
     } catch (error) {
       setBackendResult(`Request failed: ${error.message}`)
-    }
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!input.trim()) return
-    setLoading(true)
-    setError('')
-    setResult(null)
-    try {
-      const res = await fetch('/api/ytdlp/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: input.trim() }),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `Request failed (${res.status})`)
-      }
-      setResult(await res.json())
-    } catch (err) {
-      setError(err.message || 'Request failed')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -137,76 +115,6 @@ function App() {
         </button>
         {backendResult && <p>{backendResult}</p>}
       </div>
-
-      <section style={{ width: '100%', maxWidth: 640, textAlign: 'left' }}>
-        <h2>yt-dlp 抓取测试</h2>
-        <p style={{ color: 'var(--text)' }}>
-          仅用于测试：输入 TikTok 视频 ID（19 位数字）或完整视频链接，验证后端能否通过 yt-dlp 成功取得该视频的播放量等信息。
-        </p>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8 }}>
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="例如 7123456789012345678 或 https://www.tiktok.com/@user/video/..."
-            style={{ flex: 1, padding: '8px 12px', fontSize: 14 }}
-          />
-          <button type="submit" disabled={loading} style={{ padding: '8px 16px' }}>
-            {loading ? 'Loading…' : '开始测试'}
-          </button>
-        </form>
-
-        {error && <p style={{ color: '#c0392b', marginTop: 16 }}>Request error: {error}</p>}
-
-        {result && (
-          <section style={{ marginTop: 24, padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
-            <p>
-              <strong>Status:</strong>
-              {result.success ? (
-                <span style={{ color: '#2e7d32' }}>Success</span>
-              ) : (
-                <span style={{ color: '#c0392b' }}>Failed</span>
-              )}
-              {' '}({result.durationMs} ms)
-            </p>
-            {result.success ? (
-              <ul>
-                <li>视频 ID：{result.videoId}</li>
-                <li>播放量：{result.viewCount ?? '未知'}</li>
-                <li>点赞数：{result.likeCount ?? '未知'}</li>
-                <li>评论数：{result.commentCount ?? '未知'}</li>
-                <li>标题/描述：{result.title ?? '（无）'}</li>
-                <li>作者：{result.uploaderId ?? '未知'}</li>
-                <li>发布日期：{result.uploadDate ?? '未知'}</li>
-              </ul>
-            ) : (
-              <p style={{ whiteSpace: 'pre-wrap', color: '#c0392b' }}>{result.errorMessage}</p>
-            )}
-
-            {Array.isArray(result.logs) && result.logs.length > 0 && (
-              <details open style={{ marginTop: 16 }}>
-                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>抓取日志（{result.logs.length} 条）</summary>
-                <pre
-                  style={{
-                    marginTop: 8,
-                    maxHeight: 400,
-                    overflow: 'auto',
-                    background: '#1e1e1e',
-                    color: '#d4d4d4',
-                    padding: 12,
-                    borderRadius: 6,
-                    fontSize: 12,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-all',
-                  }}
-                >
-                  {result.logs.join('\n')}
-                </pre>
-              </details>
-            )}
-          </section>
-        )}
-      </section>
     </section>
     </>
   )
@@ -254,6 +162,10 @@ function AppNavigation({ backendOnline, page, onNavigate }) {
     e.preventDefault()
     onNavigate('/about')
   }
+  const handleScrapeTestClick = (e) => {
+    e.preventDefault()
+    onNavigate('/scrape-test')
+  }
   return (
     <header className="app-navigation">
       <a className="app-navigation-brand" href="/" onClick={handleBrandClick}>TikViews</a>
@@ -263,9 +175,10 @@ function AppNavigation({ backendOnline, page, onNavigate }) {
           className={`app-navigation-link ${page === 'videos' ? 'is-active' : ''}`}
           onClick={handleVideosClick}
         >
-          视频管理
+          达人管理
         </button>
-        <button type="button" className={`app-navigation-link ${page === 'about' ? 'is-active' : ''}`} onClick={handleAboutClick}>网页信息</button>
+        <button type="button" className={`app-navigation-link ${page === 'scrape-test' ? 'is-active' : ''}`} onClick={handleScrapeTestClick}>抓取测试</button>
+        <button type="button" className={`app-navigation-link ${page === 'about' ? 'is-active' : ''}`} onClick={handleAboutClick}>网站信息</button>
         <div className={`backend-status ${backendOnline ? 'is-online' : 'is-offline'}`} role="status" aria-live="polite">
           <span className="backend-status-dot" aria-hidden="true" />
           {backendOnline ? 'Online' : 'Offline'}

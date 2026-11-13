@@ -7,6 +7,8 @@ const COLUMNS = [
   { key: 'videoId', label: '视频ID' },
   { key: 'publishTime', label: '发布时间' },
   { key: 'vv', label: 'VV' },
+  { key: 'scrapeStatus', label: '抓取状态' },
+  { key: 'scrapedAt', label: '抓取时间' },
 ]
 
 function VideoManagementPage() {
@@ -15,6 +17,12 @@ function VideoManagementPage() {
   const [loadError, setLoadError] = useState('')
   const [logs, setLogs] = useState([])
   const [uploading, setUploading] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [removingId, setRemovingId] = useState(null)
+  const [scrapingId, setScrapingId] = useState(null)
+  const [copiedVideoId, setCopiedVideoId] = useState(null)
+  const [settings, setSettings] = useState(COLUMNS.map((c) => ({ key: c.key, visible: true, width: 150 })))
+  const [showSettings, setShowSettings] = useState(false)
   const fileInputRef = useRef(null)
 
   const log = (level, message) =>
@@ -37,10 +45,68 @@ function VideoManagementPage() {
 
   useEffect(() => {
     fetchVideos()
+    fetch('/api/excel/videos/settings').then((r) => r.json()).then((s) => setSettings(s.map((v) => ({ ...v, visible: !!v.visible }))))
   }, [])
+
+  const updateSettings = async (next) => {
+    setSettings(next)
+    await fetch('/api/excel/videos/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) })
+  }
+  const scrapeRow = async (row) => {
+    setScrapingId(row.id)
+    try {
+      const res = await fetch(`/api/excel/videos/${row.id}/scrape`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || '抓取失败')
+      setRows((current) => current.map((item) => item.id === row.id ? data : item))
+      log('success', `抓取完成：${row.videoId}`)
+    } catch (err) { log('error', `抓取失败：${err.message}`) } finally { setScrapingId(null) }
+  }
+
+  const copyVideoId = async (videoId) => {
+    try {
+      await navigator.clipboard.writeText(String(videoId))
+      setCopiedVideoId(videoId)
+      window.setTimeout(() => setCopiedVideoId(null), 1500)
+    } catch {
+      log('error', '复制失败：浏览器未提供剪贴板权限')
+    }
+  }
 
   const handleImportButtonClick = () => {
     fileInputRef.current?.click()
+  }
+
+  const handleClearAll = async () => {
+    if (rows.length === 0) return
+    if (!window.confirm('确定要清空所有视频记录吗？此操作无法撤销。')) return
+
+    setClearing(true)
+    try {
+      const res = await fetch('/api/excel/videos', { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || `Clear failed (HTTP ${res.status})`)
+      setRows([])
+      log('success', '已清空所有视频记录')
+    } catch (err) {
+      log('error', `清空失败：${err.message || 'Unknown error'}`)
+    } finally {
+      setClearing(false)
+    }
+  }
+
+  const handleRemoveRow = async (id) => {
+    setRemovingId(id)
+    try {
+      const res = await fetch(`/api/excel/videos/${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || `Remove failed (HTTP ${res.status})`)
+      setRows((current) => current.filter((row) => row.id !== id))
+    } catch (err) {
+      log('error', `移除失败：${err.message || 'Unknown error'}`)
+    } finally {
+      setRemovingId(null)
+    }
   }
 
   const handleFileChange = async (e) => {
@@ -78,21 +144,23 @@ function VideoManagementPage() {
 
   return (
     <section style={{ width: '100%', padding: '32px 20px', boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-        <h1 style={{ margin: 0 }}>视频管理</h1>
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleFileChange}
-            style={{ display: 'none' }}
-          />
-          <button type="button" className="counter" onClick={handleImportButtonClick} disabled={uploading}>
-            {uploading ? 'Importing…' : 'Excel 导入'}
-          </button>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+        <button type="button" className="counter" onClick={() => setShowSettings((v) => !v)}>字段设置</button>
+        <button type="button" className="counter" onClick={handleClearAll} disabled={clearing || uploading || rows.length === 0}>
+          {clearing ? 'Clearing…' : '清空表格'}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={handleFileChange}
+          style={{ display: 'none' }}
+        />
+        <button type="button" className="counter" onClick={handleImportButtonClick} disabled={uploading}>
+          {uploading ? 'Importing…' : 'Excel 导入'}
+        </button>
       </div>
+      {showSettings && <div style={{ padding: 12, border: '1px solid var(--border)', marginTop: 12 }}>{COLUMNS.map((c) => { const setting = settings.find((s) => s.key === c.key) || { visible: true, width: 150 }; return <label key={c.key} style={{ marginRight: 16 }}>{c.label} <input type="checkbox" checked={setting.visible} onChange={(e) => updateSettings(settings.map((s) => s.key === c.key ? { ...s, visible: e.target.checked } : s))} /> <input aria-label={`${c.label}宽度`} type="number" min="60" max="800" value={setting.width} style={{ width: 70 }} onChange={(e) => updateSettings(settings.map((s) => s.key === c.key ? { ...s, width: Number(e.target.value) } : s))} /></label> })}</div>}
 
       {logs.length > 0 && <ExcelImportLog logs={logs} />}
 
@@ -106,39 +174,91 @@ function VideoManagementPage() {
         <p style={{ textAlign: 'left', color: '#c0392b' }}>{loadError}</p>
       ) : (
         <div style={{ overflowX: 'auto', marginTop: 16 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <table style={{ borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr>
-                {COLUMNS.map((col) => (
+                {COLUMNS.filter((col) => settings.find((s) => s.key === col.key)?.visible !== false).map((col) => (
                   <th
                     key={col.key}
                     style={{
                       borderBottom: '2px solid var(--border)',
-                      padding: '8px 12px',
-                      whiteSpace: 'nowrap',
+                      padding: 0,
                       color: 'var(--text-h)',
                     }}
                   >
-                    {col.label}
+                    <div
+                      style={{
+                        resize: 'horizontal',
+                        overflow: 'auto',
+                        minWidth: 60,
+                        maxWidth: 600,
+                        width: settings.find((s) => s.key === col.key)?.width || 150,
+                        boxSizing: 'border-box',
+                        padding: '8px 12px',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {col.label}
+                    </div>
                   </th>
                 ))}
+                <th
+                  style={{
+                    borderBottom: '2px solid var(--border)',
+                    padding: '8px 12px',
+                    whiteSpace: 'nowrap',
+                    color: 'var(--text-h)',
+                  }}
+                >
+                  操作
+                </th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row, index) => (
-                <tr key={`${row.videoId || index}-${index}`}>
-                  {COLUMNS.map((col) => (
+                <tr key={`${row.id ?? row.videoId ?? index}-${index}`}>
+                  {COLUMNS.filter((col) => settings.find((s) => s.key === col.key)?.visible !== false).map((col) => (
                     <td
                       key={col.key}
                       style={{
                         borderBottom: '1px solid var(--border)',
                         padding: '8px 12px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
                         whiteSpace: col.key === 'videoInfo' ? 'normal' : 'nowrap',
                       }}
                     >
-                      {row[col.key] || ''}
+                      {col.key === 'videoId' && row.videoId ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <a href={`https://www.tiktok.com/@_/video/${encodeURIComponent(row.videoId)}`} target="_blank" rel="noreferrer">
+                            {row.videoId}
+                          </a>
+                          <button type="button" className="counter" onClick={() => copyVideoId(row.videoId)} aria-label={`复制视频ID ${row.videoId}`}>
+                            {copiedVideoId === row.videoId ? '已复制' : '复制'}
+                          </button>
+                        </span>
+                      ) : row[col.key] || ''}
                     </td>
                   ))}
+                  <td
+                    style={{
+                      borderBottom: '1px solid var(--border)',
+                      padding: '8px 12px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <button
+                      type="button" className="counter" onClick={() => scrapeRow(row)} disabled={scrapingId === row.id}
+                    >{scrapingId === row.id ? '抓取中…' : '测试'}</button>{' '}
+                    <button
+                      type="button"
+                      className="counter"
+                      onClick={() => handleRemoveRow(row.id)}
+                      disabled={removingId === row.id}
+                    >
+                      {removingId === row.id ? 'Removing…' : '移除'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
