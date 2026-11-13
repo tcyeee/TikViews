@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import './App.css'
+import ExcelTablePage from './pages/ExcelTablePage.jsx'
 
 function App() {
   const [backendResult, setBackendResult] = useState('')
@@ -7,6 +8,51 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
+
+  const [excelImport, setExcelImport] = useState(null)
+  const [excelError, setExcelError] = useState('')
+  const [excelUploading, setExcelUploading] = useState(false)
+  const fileInputRef = useRef(null)
+
+  const handleExcelButtonClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleExcelFileChange = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setExcelUploading(true)
+    setExcelError('')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/excel/import', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.message || `上传失败（${res.status}）`)
+      }
+      setExcelImport({ fileName: file.name, rows: data.rows })
+    } catch (err) {
+      setExcelError(err.message || '上传失败')
+    } finally {
+      setExcelUploading(false)
+    }
+  }
+
+  if (excelImport) {
+    return (
+      <ExcelTablePage
+        fileName={excelImport.fileName}
+        rows={excelImport.rows}
+        onBack={() => setExcelImport(null)}
+      />
+    )
+  }
 
   const testBackend = async () => {
     setBackendResult('Loading...')
@@ -55,6 +101,20 @@ function App() {
           Test backend connection
         </button>
         {backendResult && <p>{backendResult}</p>}
+      </div>
+
+      <div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={handleExcelFileChange}
+          style={{ display: 'none' }}
+        />
+        <button type="button" className="counter" onClick={handleExcelButtonClick} disabled={excelUploading}>
+          {excelUploading ? '导入中…' : 'Excel 导入'}
+        </button>
+        {excelError && <p style={{ color: '#c0392b', marginTop: 8 }}>导入失败：{excelError}</p>}
       </div>
 
       <section style={{ width: '100%', maxWidth: 640, textAlign: 'left' }}>
