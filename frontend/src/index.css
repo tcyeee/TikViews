@@ -180,6 +180,10 @@
 }
 
 @layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button {
+    border-color: var(--border);
+    outline-color: var(--ring);
+  }
   body {
     letter-spacing: var(--tracking-normal);
   }

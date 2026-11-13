@@ -1,5 +1,7 @@
 package com.tikviews.backend.excel
 
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -9,17 +11,25 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
+import com.tikviews.backend.ytdlp.ScrapeFailureReason
 import com.tikviews.backend.ytdlp.YtDlpService
+import com.tikviews.backend.ytdlp.toStatusLabel
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 data class ExcelImportResponse(val rows: List<ExcelRow>, val totalCount: Int, val importId: String)
 data class ExcelImportError(val message: String)
 data class ExcelVideoListResponse(val rows: List<ExcelRow>)
 data class VideoTableSetting(val key: String, val visible: Boolean, val width: Int)
+data class ScrapeResponse(val success: Boolean, val message: String?, val row: ExcelRow)
 
 @RestController
 @RequestMapping("/api/excel")
 class ExcelImportController(
     private val excelImportService: ExcelImportService,
+    private val excelExportService: ExcelExportService,
     private val excelImportRepository: ExcelImportRepository,
     private val ytDlpService: YtDlpService,
 ) {
@@ -39,6 +49,18 @@ class ExcelImportController(
         } catch (e: Exception) {
             ResponseEntity.internalServerError().body(ExcelImportError("Excel 数据保存失败：${e.message ?: "未知错误"}"))
         }
+    }
+
+    @GetMapping("/export")
+    fun export(): ResponseEntity<ByteArray> {
+        val rows = excelImportRepository.findAllRows()
+        val bytes = excelExportService.export(rows)
+        val filename = "视频数据_${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))}.xlsx"
+        val encodedFilename = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20")
+        val headers = HttpHeaders()
+        headers.contentType = MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''$encodedFilename")
+        return ResponseEntity.ok().headers(headers).body(bytes)
     }
 
     @GetMapping("/videos")
@@ -77,9 +99,20 @@ class ExcelImportController(
     fun scrapeVideo(@PathVariable id: Long): ResponseEntity<Any> {
         val row = excelImportRepository.findAllRows().firstOrNull { it.id == id } ?: return ResponseEntity.notFound().build()
         val result = ytDlpService.fetchVideoInfo(row.videoId)
-        if (!result.success || !excelImportRepository.updateScrapedRow(id, result.title, result.videoId, result.uploadDate, result.viewCount))
-            return ResponseEntity.badRequest().body(ExcelImportError(result.errorMessage ?: "抓取失败"))
-        return ResponseEntity.ok(excelImportRepository.findAllRows().first { it.id == id })
+
+        if (result.success && excelImportRepository.updateScrapedRow(id, result.title, result.videoId, result.uploadDate, result.viewCount)) {
+            val updated = excelImportRepository.findAllRows().first { it.id == id }
+            return ResponseEntity.ok(ScrapeResponse(success = true, message = null, row = updated))
+        }
+
+        // 已下架/私密/已删除是 yt-dlp 实际确认过的内容状态，值得记录覆盖；
+        // 其余失败（网络、超时等）不可信，不改动该行原有的抓取状态
+        val reason = result.failureReason ?: ScrapeFailureReason.OTHER
+        if (reason != ScrapeFailureReason.OTHER) {
+            excelImportRepository.updateScrapeStatus(id, reason.toStatusLabel())
+        }
+        val updated = excelImportRepository.findAllRows().first { it.id == id }
+        return ResponseEntity.ok(ScrapeResponse(success = false, message = result.errorMessage ?: "抓取失败", row = updated))
     }
 
     @GetMapping("/videos/settings")

@@ -8,6 +8,23 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
+// 视频在抓取时可能已经被下架/设为私密/删除；这三类属于「内容状态确认」失败，
+// 可信地反映抓取对象当前状态，值得持久化。其余失败（网络、超时、代理等）归为 OTHER，
+// 不代表内容真的发生了变化，不应覆盖此前已记录的抓取状态。
+enum class ScrapeFailureReason {
+    REMOVED,
+    PRIVATE,
+    DELETED,
+    OTHER,
+}
+
+fun ScrapeFailureReason.toStatusLabel(): String = when (this) {
+    ScrapeFailureReason.REMOVED -> "已下架"
+    ScrapeFailureReason.PRIVATE -> "私密"
+    ScrapeFailureReason.DELETED -> "已删除"
+    ScrapeFailureReason.OTHER -> "抓取失败"
+}
+
 data class YtDlpTestResult(
     val success: Boolean,
     val videoId: String?,
@@ -18,6 +35,7 @@ data class YtDlpTestResult(
     val uploaderId: String?,
     val uploadDate: String?,
     val errorMessage: String?,
+    val failureReason: ScrapeFailureReason?,
     val durationMs: Long,
     val logs: List<String>,
 )
@@ -109,8 +127,9 @@ class YtDlpService(
 
         if (exitCode != 0 || stdout.isBlank()) {
             val message = stderr.ifBlank { "yt-dlp 返回空结果（exit code $exitCode）" }.trim()
-            log("判定为失败：$message")
-            return failure(message, durationMs, logs)
+            val reason = classifyFailure(message)
+            log("判定为失败：$message（分类：$reason）")
+            return failure(message, durationMs, logs, reason)
         }
 
         return try {
@@ -126,6 +145,7 @@ class YtDlpService(
                 uploaderId = (node.get("uploader_id") ?: node.get("uploader"))?.takeIf { it.isValueNode }?.asString(),
                 uploadDate = node.get("upload_date")?.takeIf { it.isValueNode }?.asString(),
                 errorMessage = null,
+                failureReason = null,
                 durationMs = durationMs,
                 logs = logs,
             )
@@ -139,7 +159,24 @@ class YtDlpService(
         if (input.startsWith("http://") || input.startsWith("https://")) input
         else "https://www.tiktok.com/@_/video/$input"
 
-    private fun failure(message: String, durationMs: Long, logs: List<String>) = YtDlpTestResult(
+    // yt-dlp/TikTok 对不同下线原因的措辞并不统一，这里按常见关键词做best-effort归类；
+    // 遇到新的措辞时再补充关键词即可。
+    private fun classifyFailure(message: String): ScrapeFailureReason {
+        val lower = message.lowercase()
+        return when {
+            "private" in lower -> ScrapeFailureReason.PRIVATE
+            "not found" in lower || "404" in lower || "doesn't exist" in lower || "does not exist" in lower -> ScrapeFailureReason.DELETED
+            "unavailable" in lower || "removed" in lower || "violat" in lower || "no longer available" in lower -> ScrapeFailureReason.REMOVED
+            else -> ScrapeFailureReason.OTHER
+        }
+    }
+
+    private fun failure(
+        message: String,
+        durationMs: Long,
+        logs: List<String>,
+        reason: ScrapeFailureReason = ScrapeFailureReason.OTHER,
+    ) = YtDlpTestResult(
         success = false,
         videoId = null,
         viewCount = null,
@@ -149,6 +186,7 @@ class YtDlpService(
         uploaderId = null,
         uploadDate = null,
         errorMessage = message,
+        failureReason = reason,
         durationMs = durationMs,
         logs = logs,
     )

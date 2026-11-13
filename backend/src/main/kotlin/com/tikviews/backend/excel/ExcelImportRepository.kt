@@ -62,6 +62,12 @@ class ExcelImportRepository(private val jdbcTemplate: JdbcTemplate) {
             publish_time = COALESCE(?, publish_time), vv = COALESCE(?, vv), scrape_status = '已抓取', scraped_at = ? WHERE id = ?""",
             title, videoId, uploadDate, views?.toString(), Instant.now().toString(), id) > 0
 
+    // 仅用于「内容状态已确认」的失败（已下架/私密/已删除），不改动其余字段，
+    // 不可信的失败（网络/超时等）不应调用本方法覆盖此前的抓取状态
+    fun updateScrapeStatus(id: Long, status: String): Boolean =
+        jdbcTemplate.update("UPDATE excel_import_rows SET scrape_status = ?, scraped_at = ? WHERE id = ?",
+            status, Instant.now().toString(), id) > 0
+
     fun findTableSettings(): List<Map<String, Any?>> = jdbcTemplate.queryForList("SELECT column_key AS key, visible, width FROM video_table_settings")
 
     @Transactional

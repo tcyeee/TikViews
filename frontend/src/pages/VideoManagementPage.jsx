@@ -1,4 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
+import { CheckIcon, CopyIcon } from 'lucide-react'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationFirst,
+  PaginationItem,
+  PaginationLast,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import { useMessages } from '@/lib/MessageContext.jsx'
+import { cn } from '@/lib/utils'
 
 const COLUMNS = [
   { key: 'authorNickname', label: '达人昵称' },
@@ -11,26 +30,83 @@ const COLUMNS = [
   { key: 'scrapedAt', label: '抓取时间' },
 ]
 
+// 已下架/私密/已删除是 yt-dlp 确认过的内容状态，视为批量抓取中的正常终态，
+// 不应被当作系统性故障计入连续失败熔断计数
+const CONTENT_TERMINAL_STATUSES = new Set(['已下架', '私密', '已删除'])
+
+const SCRAPE_STATUS_VARIANTS = {
+  未抓取: 'secondary',
+  已抓取: 'success',
+  已下架: 'warning',
+  私密: 'outline',
+  已删除: 'outline',
+  抓取失败: 'destructive',
+}
+
+const SCRAPE_STATUS_CLASS = {
+  私密: 'border-violet-200 text-violet-700 dark:border-violet-900 dark:text-violet-400',
+  已删除: 'text-muted-foreground',
+}
+
+function ScrapeStatusBadge({ status }) {
+  const label = status || '未抓取'
+  const variant = SCRAPE_STATUS_VARIANTS[label] || 'secondary'
+  return (
+    <Badge variant={variant} className={cn('rounded-full', SCRAPE_STATUS_CLASS[label])}>
+      {label}
+    </Badge>
+  )
+}
+
+const EMPTY_FILTERS = { authorNickname: '', authorId: '', videoId: '', scrapeStatus: '' }
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
+
 function VideoManagementPage() {
+  const { pushMessage } = useMessages()
   const [rows, setRows] = useState([])
   const [loadingVideos, setLoadingVideos] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [logs, setLogs] = useState([])
   const [uploading, setUploading] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [removingId, setRemovingId] = useState(null)
+  const [exporting, setExporting] = useState(false)
   const [scrapingId, setScrapingId] = useState(null)
   const [batchScraping, setBatchScraping] = useState(false)
   const batchStopRef = useRef(false)
   const [copiedVideoId, setCopiedVideoId] = useState(null)
-  const [logsVisible, setLogsVisible] = useState(true)
   const [settings, setSettings] = useState(COLUMNS.map((c) => ({ key: c.key, visible: true, width: 150 })))
   const [showSettings, setShowSettings] = useState(false)
   const fileInputRef = useRef(null)
+  const [filterForm, setFilterForm] = useState(EMPTY_FILTERS)
+  const [appliedFilters, setAppliedFilters] = useState(EMPTY_FILTERS)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+
+  const filteredRows = rows.filter((row) => {
+    if (appliedFilters.authorNickname && !String(row.authorNickname || '').toLowerCase().includes(appliedFilters.authorNickname.toLowerCase())) return false
+    if (appliedFilters.authorId && !String(row.authorId || '').toLowerCase().includes(appliedFilters.authorId.toLowerCase())) return false
+    if (appliedFilters.videoId && !String(row.videoId || '').toLowerCase().includes(appliedFilters.videoId.toLowerCase())) return false
+    if (appliedFilters.scrapeStatus && row.scrapeStatus !== appliedFilters.scrapeStatus) return false
+    return true
+  })
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedRows = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+
+  const handleFilterSubmit = (e) => {
+    e.preventDefault()
+    setAppliedFilters(filterForm)
+    setPage(1)
+  }
+
+  const handleFilterReset = () => {
+    setFilterForm(EMPTY_FILTERS)
+    setAppliedFilters(EMPTY_FILTERS)
+    setPage(1)
+  }
 
   const log = (level, message) => {
-    setLogs((entries) => [...entries, { id: `${Date.now()}-${Math.random()}`, time: new Date().toLocaleTimeString(), level, message }])
-    setLogsVisible(true)
+    pushMessage(level, message)
   }
 
   const fetchVideos = async () => {
@@ -63,10 +139,27 @@ function VideoManagementPage() {
       const res = await fetch(`/api/excel/videos/${row.id}/scrape`, { method: 'POST' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || '抓取失败')
-      setRows((current) => current.map((item) => item.id === row.id ? data : item))
-      log('success', `抓取完成：${row.videoId}`)
-    } catch (err) { log('error', `抓取失败：${err.message}`) } finally { setScrapingId(null) }
+      setRows((current) => current.map((item) => item.id === row.id ? data.row : item))
+      if (data.success) {
+        log('success', `抓取完成：${row.videoId}`)
+        return true
+      }
+      if (CONTENT_TERMINAL_STATUSES.has(data.row.scrapeStatus)) {
+        // 视频已确认下架/私密/已删除，属于正常终态，不计入批量抓取的连续失败熔断
+        log('warning', `${data.row.scrapeStatus}：${row.videoId}`)
+        return true
+      }
+      log('error', `抓取失败：${row.videoId}${data.message ? `（${data.message}）` : ''}`)
+      return false
+    } catch (err) {
+      log('error', `抓取失败：${err.message}`)
+      return false
+    } finally {
+      setScrapingId(null)
+    }
   }
+
+  const MAX_CONSECUTIVE_FAILURES = 3
 
   const handleBatchScrapeClick = async () => {
     if (batchScraping) {
@@ -79,13 +172,23 @@ function VideoManagementPage() {
     batchStopRef.current = false
     setBatchScraping(true)
     log('info', `开始批量抓取，共 ${rows.length} 条`)
+    let consecutiveFailures = 0
     try {
       for (const row of rows) {
         if (batchStopRef.current) {
           log('info', '批量抓取已停止')
           break
         }
-        await scrapeRow(row)
+        const success = await scrapeRow(row)
+        if (success) {
+          consecutiveFailures = 0
+        } else {
+          consecutiveFailures += 1
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            log('error', `连续抓取失败 ${MAX_CONSECUTIVE_FAILURES} 次，已自动停止批量抓取`)
+            break
+          }
+        }
       }
     } finally {
       setBatchScraping(false)
@@ -105,6 +208,35 @@ function VideoManagementPage() {
 
   const handleImportButtonClick = () => {
     fileInputRef.current?.click()
+  }
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const res = await fetch('/api/excel/export')
+      if (!res.ok) {
+        let message = `Export failed (HTTP ${res.status})`
+        try { message = (await res.json()).message || message } catch { /* response body wasn't JSON */ }
+        throw new Error(message)
+      }
+      const blob = await res.blob()
+      const disposition = res.headers.get('Content-Disposition') || ''
+      const match = disposition.match(/filename\*=UTF-8''([^;]+)/)
+      const filename = match ? decodeURIComponent(match[1]) : `视频数据_${Date.now()}.xlsx`
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      log('success', `导出成功：${filename}`)
+    } catch (err) {
+      log('error', `导出失败：${err.message || 'Unknown error'}`)
+    } finally {
+      setExporting(false)
+    }
   }
 
   const handleClearAll = async () => {
@@ -173,57 +305,131 @@ function VideoManagementPage() {
   }
 
   return (
-    <section style={{ width: '100%', padding: '32px 20px', boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
-        <button type="button" className="counter" onClick={() => setShowSettings((v) => !v)}>字段设置</button>
-        <button
+    <section className="w-full box-border px-5 py-8">
+      <div className="flex items-baseline justify-end gap-3 flex-wrap">
+        <Button type="button" variant="outline" size="sm" onClick={() => setShowSettings((v) => !v)}>
+          字段设置
+        </Button>
+        <Button
           type="button"
-          className="counter"
+          variant={batchScraping ? 'destructive' : 'default'}
+          size="sm"
           onClick={handleBatchScrapeClick}
           disabled={clearing || uploading || (!batchScraping && rows.length === 0)}
         >
           {batchScraping ? '停止抓取' : '批量抓取'}
-        </button>
-        <button type="button" className="counter" onClick={handleClearAll} disabled={clearing || uploading || batchScraping || rows.length === 0}>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="text-destructive hover:text-destructive"
+          onClick={handleClearAll}
+          disabled={clearing || uploading || batchScraping || rows.length === 0}
+        >
           {clearing ? 'Clearing…' : '清空表格'}
-        </button>
+        </Button>
         <input
           ref={fileInputRef}
           type="file"
           accept=".xlsx,.xls"
           onChange={handleFileChange}
-          style={{ display: 'none' }}
+          className="hidden"
         />
-        <button type="button" className="counter" onClick={handleImportButtonClick} disabled={uploading || batchScraping}>
+        <Button type="button" variant="outline" size="sm" onClick={handleImportButtonClick} disabled={uploading || batchScraping}>
           {uploading ? 'Importing…' : 'Excel 导入'}
-        </button>
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={handleExport} disabled={exporting || batchScraping || rows.length === 0}>
+          {exporting ? 'Exporting…' : 'Excel 导出'}
+        </Button>
       </div>
-      {showSettings && <div style={{ padding: 12, border: '1px solid var(--border)', marginTop: 12 }}>{COLUMNS.map((c) => { const setting = settings.find((s) => s.key === c.key) || { visible: true, width: 150 }; return <label key={c.key} style={{ marginRight: 16 }}>{c.label} <input type="checkbox" checked={setting.visible} onChange={(e) => updateSettings(settings.map((s) => s.key === c.key ? { ...s, visible: e.target.checked } : s))} /> <input aria-label={`${c.label}宽度`} type="number" min="60" max="800" value={setting.width} style={{ width: 70 }} onChange={(e) => updateSettings(settings.map((s) => s.key === c.key ? { ...s, width: Number(e.target.value) } : s))} /></label> })}</div>}
+      {showSettings && (
+        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3 rounded-md border p-3">
+          {COLUMNS.map((c) => {
+            const setting = settings.find((s) => s.key === c.key) || { visible: true, width: 150 }
+            return (
+              <div key={c.key} className="flex items-center gap-2">
+                <Checkbox
+                  id={`col-${c.key}`}
+                  checked={setting.visible}
+                  onCheckedChange={(checked) =>
+                    updateSettings(settings.map((s) => (s.key === c.key ? { ...s, visible: !!checked } : s)))
+                  }
+                />
+                <Label htmlFor={`col-${c.key}`}>{c.label}</Label>
+                <Input
+                  aria-label={`${c.label}宽度`}
+                  type="number"
+                  min="60"
+                  max="800"
+                  value={setting.width}
+                  className="h-8 w-[70px]"
+                  onChange={(e) => updateSettings(settings.map((s) => (s.key === c.key ? { ...s, width: Number(e.target.value) } : s)))}
+                />
+              </div>
+            )
+          })}
+        </div>
+      )}
 
-      {logs.length > 0 && logsVisible && <ExcelImportLog logs={logs} onClose={() => setLogsVisible(false)} />}
+      <form onSubmit={handleFilterSubmit} className="mt-4 flex items-center gap-2.5 flex-wrap text-left">
+        <Input
+          type="text"
+          placeholder="达人昵称"
+          value={filterForm.authorNickname}
+          onChange={(e) => setFilterForm((f) => ({ ...f, authorNickname: e.target.value }))}
+          className="w-[160px]"
+        />
+        <Input
+          type="text"
+          placeholder="达人ID"
+          value={filterForm.authorId}
+          onChange={(e) => setFilterForm((f) => ({ ...f, authorId: e.target.value }))}
+          className="w-[160px]"
+        />
+        <Input
+          type="text"
+          placeholder="视频ID"
+          value={filterForm.videoId}
+          onChange={(e) => setFilterForm((f) => ({ ...f, videoId: e.target.value }))}
+          className="w-[160px]"
+        />
+        <Select
+          value={filterForm.scrapeStatus || 'all'}
+          onValueChange={(value) => setFilterForm((f) => ({ ...f, scrapeStatus: value === 'all' ? '' : value }))}
+        >
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="全部状态" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部状态</SelectItem>
+            <SelectItem value="未抓取">未抓取</SelectItem>
+            <SelectItem value="已抓取">已抓取</SelectItem>
+            <SelectItem value="已下架">已下架</SelectItem>
+            <SelectItem value="私密">私密</SelectItem>
+            <SelectItem value="已删除">已删除</SelectItem>
+            <SelectItem value="抓取失败">抓取失败</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button type="submit" size="sm">查询</Button>
+        <Button type="button" variant="outline" size="sm" onClick={handleFilterReset}>重置</Button>
+      </form>
 
-      <p style={{ textAlign: 'left', marginTop: 16 }}>
-        共 {rows.length} 条记录
+      <p className="mt-4 text-left text-sm text-muted-foreground">
+        共 {filteredRows.length} 条记录{filteredRows.length !== rows.length ? `（总 ${rows.length} 条）` : ''}
       </p>
 
       {loadingVideos ? (
-        <p style={{ textAlign: 'left' }}>Loading…</p>
+        <p className="text-left text-sm text-muted-foreground">Loading…</p>
       ) : loadError ? (
-        <p style={{ textAlign: 'left', color: '#c0392b' }}>{loadError}</p>
+        <p className="text-left text-sm text-destructive">{loadError}</p>
       ) : (
-        <div style={{ overflowX: 'auto', marginTop: 16 }}>
-          <table style={{ borderCollapse: 'separate', borderSpacing: 0, textAlign: 'left' }}>
-            <thead>
-              <tr>
+        <div className="mt-4 rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
                 {COLUMNS.filter((col) => settings.find((s) => s.key === col.key)?.visible !== false).map((col) => (
-                  <th
-                    key={col.key}
-                    style={{
-                      borderBottom: '2px solid var(--border)',
-                      padding: 0,
-                      color: 'var(--text-h)',
-                    }}
-                  >
+                  <TableHead key={col.key} className="p-0 h-auto">
                     <div
                       style={{
                         resize: 'horizontal',
@@ -232,118 +438,116 @@ function VideoManagementPage() {
                         maxWidth: 600,
                         width: settings.find((s) => s.key === col.key)?.width || 150,
                         boxSizing: 'border-box',
-                        padding: '8px 12px',
-                        whiteSpace: 'nowrap',
                       }}
+                      className="px-3 py-2 whitespace-nowrap"
                     >
                       {col.label}
                     </div>
-                  </th>
+                  </TableHead>
                 ))}
-                <th
-                  style={{
-                    borderBottom: '2px solid var(--border)',
-                    padding: '8px 12px',
-                    whiteSpace: 'nowrap',
-                    color: 'var(--text-h)',
-                    position: 'sticky',
-                    right: 0,
-                    zIndex: 2,
-                    background: 'var(--background)',
-                    boxShadow: '-8px 0 8px -8px var(--border)',
-                  }}
-                >
+                <TableHead className="sticky right-0 z-10 bg-background shadow-[-8px_0_8px_-8px_var(--border)]">
                   操作
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={`${row.id ?? row.videoId ?? index}-${index}`}>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pagedRows.map((row, index) => (
+                <TableRow key={`${row.id ?? row.videoId ?? index}-${index}`}>
                   {COLUMNS.filter((col) => settings.find((s) => s.key === col.key)?.visible !== false).map((col) => (
-                    <td
+                    <TableCell
                       key={col.key}
-                      style={{
-                        borderBottom: '1px solid var(--border)',
-                        padding: '8px 12px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: col.key === 'videoInfo' ? 'normal' : 'nowrap',
-                      }}
+                      className={col.key === 'videoInfo' ? 'whitespace-normal overflow-hidden text-ellipsis' : 'overflow-hidden text-ellipsis'}
                     >
                       {col.key === 'videoId' && row.videoId ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                          <a href={`https://www.tiktok.com/@_/video/${encodeURIComponent(row.videoId)}`} target="_blank" rel="noreferrer">
+                        <span className="inline-flex items-center gap-1">
+                          <a
+                            className="text-primary underline-offset-4 hover:underline"
+                            href={`https://www.tiktok.com/@_/video/${encodeURIComponent(row.videoId)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
                             {row.videoId}
                           </a>
-                          <button type="button" className="counter" onClick={() => copyVideoId(row.videoId)} aria-label={`复制视频ID ${row.videoId}`}>
-                            {copiedVideoId === row.videoId ? '已复制' : '复制'}
-                          </button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-6"
+                            onClick={() => copyVideoId(row.videoId)}
+                            aria-label={`复制视频ID ${row.videoId}`}
+                          >
+                            {copiedVideoId === row.videoId ? <CheckIcon className="text-green-600" /> : <CopyIcon />}
+                          </Button>
                         </span>
+                      ) : col.key === 'scrapeStatus' ? (
+                        <ScrapeStatusBadge status={row.scrapeStatus} />
                       ) : row[col.key] || ''}
-                    </td>
+                    </TableCell>
                   ))}
-                  <td
-                    style={{
-                      borderBottom: '1px solid var(--border)',
-                      padding: '8px 12px',
-                      whiteSpace: 'nowrap',
-                      position: 'sticky',
-                      right: 0,
-                      zIndex: 1,
-                      background: 'var(--background)',
-                      boxShadow: '-8px 0 8px -8px var(--border)',
-                    }}
-                  >
-                    <button
-                      type="button" className="counter" onClick={() => scrapeRow(row)} disabled={scrapingId === row.id || batchScraping}
-                    >{scrapingId === row.id ? '抓取中…' : '抓取'}</button>{' '}
-                    <button
-                      type="button"
-                      className="counter"
-                      onClick={() => handleRemoveRow(row.id)}
-                      disabled={removingId === row.id || batchScraping}
-                    >
-                      {removingId === row.id ? 'Removing…' : '移除'}
-                    </button>
-                  </td>
-                </tr>
+                  <TableCell className="sticky right-0 z-[1] bg-background shadow-[-8px_0_8px_-8px_var(--border)]">
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => scrapeRow(row)}
+                        disabled={scrapingId === row.id || batchScraping}
+                      >
+                        {scrapingId === row.id ? '抓取中…' : '抓取'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleRemoveRow(row.id)}
+                        disabled={removingId === row.id || batchScraping}
+                      >
+                        {removingId === row.id ? 'Removing…' : '移除'}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
+          <div className="flex items-center justify-end gap-3 flex-wrap px-1 py-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span>每页</span>
+              <Select value={String(pageSize)} onValueChange={(value) => { setPageSize(Number(value)); setPage(1) }}>
+                <SelectTrigger size="sm" className="w-[76px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span>条</span>
+            </div>
+            <Pagination className="mx-0 w-auto">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationFirst onClick={() => setPage(1)} disabled={currentPage <= 1} />
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationPrevious onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} />
+                </PaginationItem>
+                <PaginationItem>
+                  <span className="px-2 text-sm whitespace-nowrap">第 {currentPage} / {totalPages} 页</span>
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationNext onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} />
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationLast onClick={() => setPage(totalPages)} disabled={currentPage >= totalPages} />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
         </div>
       )}
-    </section>
-  )
-}
-
-function ExcelImportLog({ logs, onClose }) {
-  const colors = { info: 'var(--text)', success: '#2e7d32', error: '#c0392b' }
-  const [copied, setCopied] = useState(false)
-
-  const copyLogs = async () => {
-    const text = logs.map((entry) => `[${entry.time}] [${entry.level}] ${entry.message}`).join('\n')
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      /* ignore clipboard permission failures */
-    }
-  }
-
-  return (
-    <section aria-live="polite" style={{ marginTop: 16, textAlign: 'left' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '8px 0' }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>日志</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" className="counter" onClick={copyLogs}>{copied ? '已复制' : '复制'}</button>
-          <button type="button" className="counter" onClick={onClose}>关闭</button>
-        </div>
-      </div>
-      <ul style={{ margin: 0, padding: '10px 12px 10px 36px', border: '1px solid var(--border)', borderRadius: 8 }}>
-        {logs.map((entry) => <li key={entry.id} style={{ color: colors[entry.level], margin: '4px 0' }}><time>{entry.time}</time>　{entry.message}</li>)}
-      </ul>
     </section>
   )
 }
