@@ -14,8 +14,17 @@ CREATE TABLE IF NOT EXISTS excel_import_rows (
     video_info TEXT NOT NULL,
     video_id TEXT NOT NULL,
     publish_time TEXT NOT NULL,
-    vv TEXT NOT NULL
+    vv TEXT NOT NULL,
+    scrape_status TEXT NOT NULL DEFAULT '未抓取',
+    scraped_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS video_table_settings (
+    column_key TEXT PRIMARY KEY,
+    visible INTEGER NOT NULL DEFAULT 1,
+    width INTEGER NOT NULL DEFAULT 150
+);
+
 
 CREATE INDEX IF NOT EXISTS idx_excel_import_rows_import_id
     ON excel_import_rows(import_id);

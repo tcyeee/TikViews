@@ -1,22 +1,27 @@
 package com.tikviews.backend.excel
 
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
+import com.tikviews.backend.ytdlp.YtDlpService
 
 data class ExcelImportResponse(val rows: List<ExcelRow>, val totalCount: Int, val importId: String)
 data class ExcelImportError(val message: String)
 data class ExcelVideoListResponse(val rows: List<ExcelRow>)
+data class VideoTableSetting(val key: String, val visible: Boolean, val width: Int)
 
 @RestController
 @RequestMapping("/api/excel")
 class ExcelImportController(
     private val excelImportService: ExcelImportService,
     private val excelImportRepository: ExcelImportRepository,
+    private val ytDlpService: YtDlpService,
 ) {
 
     @PostMapping("/import")
@@ -43,5 +48,45 @@ class ExcelImportController(
         } catch (e: Exception) {
             ResponseEntity.internalServerError().body(ExcelImportError("读取视频列表失败：${e.message ?: "未知错误"}"))
         }
+    }
+
+    @DeleteMapping("/videos")
+    fun clearVideos(): ResponseEntity<Any> {
+        return try {
+            excelImportRepository.deleteAll()
+            ResponseEntity.ok(ExcelVideoListResponse(emptyList()))
+        } catch (e: Exception) {
+            ResponseEntity.internalServerError().body(ExcelImportError("清空视频列表失败：${e.message ?: "未知错误"}"))
+        }
+    }
+
+    @DeleteMapping("/videos/{id}")
+    fun deleteVideo(@PathVariable id: Long): ResponseEntity<Any> {
+        return try {
+            val deleted = excelImportRepository.deleteRow(id)
+            if (!deleted) {
+                return ResponseEntity.notFound().build()
+            }
+            ResponseEntity.ok(ExcelVideoListResponse(excelImportRepository.findAllRows()))
+        } catch (e: Exception) {
+            ResponseEntity.internalServerError().body(ExcelImportError("删除视频失败：${e.message ?: "未知错误"}"))
+        }
+    }
+
+    @PostMapping("/videos/{id}/scrape")
+    fun scrapeVideo(@PathVariable id: Long): ResponseEntity<Any> {
+        val row = excelImportRepository.findAllRows().firstOrNull { it.id == id } ?: return ResponseEntity.notFound().build()
+        val result = ytDlpService.fetchVideoInfo(row.videoId)
+        if (!result.success || !excelImportRepository.updateScrapedRow(id, result.title, result.videoId, result.uploadDate, result.viewCount))
+            return ResponseEntity.badRequest().body(ExcelImportError(result.errorMessage ?: "抓取失败"))
+        return ResponseEntity.ok(excelImportRepository.findAllRows().first { it.id == id })
+    }
+
+    @GetMapping("/videos/settings")
+    fun tableSettings() = excelImportRepository.findTableSettings()
+
+    @org.springframework.web.bind.annotation.PutMapping("/videos/settings")
+    fun saveTableSettings(@org.springframework.web.bind.annotation.RequestBody settings: List<VideoTableSetting>) {
+        excelImportRepository.saveTableSettings(settings)
     }
 }

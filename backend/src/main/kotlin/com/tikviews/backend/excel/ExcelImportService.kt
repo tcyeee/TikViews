@@ -17,6 +17,9 @@ data class ExcelRow(
     val videoId: String,
     val publishTime: String,
     val vv: String,
+    val id: Long? = null,
+    val scrapeStatus: String = "未抓取",
+    val scrapedAt: String? = null,
 )
 
 class ExcelFormatException(message: String) : RuntimeException(message)
