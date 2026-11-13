@@ -23,7 +23,7 @@ data class ExcelImportResponse(val rows: List<ExcelRow>, val totalCount: Int, va
 data class ExcelImportError(val message: String)
 data class ExcelVideoListResponse(val rows: List<ExcelRow>)
 data class VideoTableSetting(val key: String, val visible: Boolean, val width: Int)
-data class ScrapeResponse(val success: Boolean, val message: String?, val row: ExcelRow)
+data class ScrapeResponse(val success: Boolean, val message: String?, val row: ExcelRow, val blocked: Boolean = false)
 
 @RestController
 @RequestMapping("/api/excel")
@@ -106,13 +106,20 @@ class ExcelImportController(
         }
 
         // 已下架/私密/已删除是 yt-dlp 实际确认过的内容状态，值得记录覆盖；
-        // 其余失败（网络、超时等）不可信，不改动该行原有的抓取状态
+        // IP 被限流和其余失败（网络、超时等）都不可信，不改动该行原有的抓取状态
         val reason = result.failureReason ?: ScrapeFailureReason.OTHER
-        if (reason != ScrapeFailureReason.OTHER) {
+        if (reason == ScrapeFailureReason.REMOVED || reason == ScrapeFailureReason.PRIVATE || reason == ScrapeFailureReason.DELETED) {
             excelImportRepository.updateScrapeStatus(id, reason.toStatusLabel())
         }
         val updated = excelImportRepository.findAllRows().first { it.id == id }
-        return ResponseEntity.ok(ScrapeResponse(success = false, message = result.errorMessage ?: "抓取失败", row = updated))
+        return ResponseEntity.ok(
+            ScrapeResponse(
+                success = false,
+                message = result.errorMessage ?: "抓取失败",
+                row = updated,
+                blocked = reason == ScrapeFailureReason.BLOCKED,
+            ),
+        )
     }
 
     @GetMapping("/videos/settings")
