@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CheckIcon, CopyIcon } from 'lucide-react'
+import { CheckIcon, CopyIcon, XIcon } from 'lucide-react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -61,6 +61,32 @@ function ScrapeStatusBadge({ status }) {
 const EMPTY_FILTERS = { authorNickname: '', authorId: '', videoId: '', scrapeStatus: '' }
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
+// 批量抓取请求之间的随机间隔，避免短时间内高频请求触发 TikTok 对本服务器 IP 的限流
+const BATCH_SCRAPE_MIN_DELAY_MS = 2000
+const BATCH_SCRAPE_MAX_DELAY_MS = 5000
+
+function randomBatchDelay() {
+  return BATCH_SCRAPE_MIN_DELAY_MS + Math.random() * (BATCH_SCRAPE_MAX_DELAY_MS - BATCH_SCRAPE_MIN_DELAY_MS)
+}
+
+// 分段 sleep，以便停止按钮能在等待期间及时生效，而不用等到下一条抓取完成
+async function interruptibleSleep(ms, stopRef) {
+  const step = 200
+  let waited = 0
+  while (waited < ms) {
+    if (stopRef.current) return
+    await new Promise((resolve) => window.setTimeout(resolve, Math.min(step, ms - waited)))
+    waited += step
+  }
+}
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`
+}
+
 function VideoManagementPage() {
   const { pushMessage } = useMessages()
   const [rows, setRows] = useState([])
@@ -73,6 +99,13 @@ function VideoManagementPage() {
   const [scrapingId, setScrapingId] = useState(null)
   const [batchScraping, setBatchScraping] = useState(false)
   const batchStopRef = useRef(false)
+  const [batchPanelOpen, setBatchPanelOpen] = useState(false)
+  const [batchTotal, setBatchTotal] = useState(0)
+  const [batchCompleted, setBatchCompleted] = useState(0)
+  const [batchCurrentRow, setBatchCurrentRow] = useState(null)
+  const [batchDone, setBatchDone] = useState(false)
+  const [batchStartedAt, setBatchStartedAt] = useState(null)
+  const [batchElapsedMs, setBatchElapsedMs] = useState(0)
   const [copiedVideoId, setCopiedVideoId] = useState(null)
   const [settings, setSettings] = useState(COLUMNS.map((c) => ({ key: c.key, visible: true, width: 150 })))
   const [showSettings, setShowSettings] = useState(false)
@@ -129,6 +162,14 @@ function VideoManagementPage() {
     fetch('/api/excel/videos/settings').then((r) => r.json()).then((s) => setSettings(s.map((v) => ({ ...v, visible: !!v.visible }))))
   }, [])
 
+  useEffect(() => {
+    if (!batchScraping || !batchStartedAt) return
+    const timer = window.setInterval(() => {
+      setBatchElapsedMs(Date.now() - batchStartedAt)
+    }, 200)
+    return () => window.clearInterval(timer)
+  }, [batchScraping, batchStartedAt])
+
   const updateSettings = async (next) => {
     setSettings(next)
     await fetch('/api/excel/videos/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) })
@@ -142,18 +183,22 @@ function VideoManagementPage() {
       setRows((current) => current.map((item) => item.id === row.id ? data.row : item))
       if (data.success) {
         log('success', `抓取完成：${row.videoId}`)
-        return true
+        return { success: true, blocked: false }
       }
       if (CONTENT_TERMINAL_STATUSES.has(data.row.scrapeStatus)) {
         // 视频已确认下架/私密/已删除，属于正常终态，不计入批量抓取的连续失败熔断
         log('warning', `${data.row.scrapeStatus}：${row.videoId}`)
-        return true
+        return { success: true, blocked: false }
+      }
+      if (data.blocked) {
+        log('error', `服务器 IP 被 TikTok 临时限制：${row.videoId}${data.message ? `（${data.message}）` : ''}`)
+        return { success: false, blocked: true }
       }
       log('error', `抓取失败：${row.videoId}${data.message ? `（${data.message}）` : ''}`)
-      return false
+      return { success: false, blocked: false }
     } catch (err) {
       log('error', `抓取失败：${err.message}`)
-      return false
+      return { success: false, blocked: false }
     } finally {
       setScrapingId(null)
     }
@@ -169,8 +214,16 @@ function VideoManagementPage() {
     }
     if (rows.length === 0) return
 
+    const startedAt = Date.now()
     batchStopRef.current = false
     setBatchScraping(true)
+    setBatchPanelOpen(true)
+    setBatchDone(false)
+    setBatchTotal(rows.length)
+    setBatchCompleted(0)
+    setBatchCurrentRow(null)
+    setBatchStartedAt(startedAt)
+    setBatchElapsedMs(0)
     log('info', `开始批量抓取，共 ${rows.length} 条`)
     let consecutiveFailures = 0
     try {
@@ -179,7 +232,13 @@ function VideoManagementPage() {
           log('info', '批量抓取已停止')
           break
         }
-        const success = await scrapeRow(row)
+        setBatchCurrentRow(row)
+        const { success, blocked } = await scrapeRow(row)
+        setBatchCompleted((c) => c + 1)
+        if (blocked) {
+          log('error', 'TikTok 已临时限制本服务器 IP 的访问，批量抓取已自动停止，请稍后再试')
+          break
+        }
         if (success) {
           consecutiveFailures = 0
         } else {
@@ -189,10 +248,18 @@ function VideoManagementPage() {
             break
           }
         }
+        if (batchStopRef.current) {
+          log('info', '批量抓取已停止')
+          break
+        }
+        await interruptibleSleep(randomBatchDelay(), batchStopRef)
       }
     } finally {
       setBatchScraping(false)
       batchStopRef.current = false
+      setBatchCurrentRow(null)
+      setBatchDone(true)
+      setBatchElapsedMs(Date.now() - startedAt)
     }
   }
 
@@ -425,6 +492,42 @@ function VideoManagementPage() {
         <p className="text-left text-sm text-destructive">{loadError}</p>
       ) : (
         <div className="mt-4 rounded-md border">
+          {batchPanelOpen && (
+            <div className="border-b bg-muted/40 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">
+                  {batchDone ? '批量抓取已完成' : '批量抓取中…'}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={() => setBatchPanelOpen(false)}
+                  aria-label="关闭批量抓取面板"
+                >
+                  <XIcon />
+                </Button>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${batchTotal ? Math.min(100, (batchCompleted / batchTotal) * 100) : 0}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3 text-sm text-muted-foreground flex-wrap">
+                <span className="truncate">
+                  {batchCompleted} / {batchTotal}
+                  {!batchDone && batchCurrentRow
+                    ? ` · 正在抓取：${batchCurrentRow.authorNickname || ''} ${batchCurrentRow.videoInfo || batchCurrentRow.videoId || ''}`
+                    : ''}
+                </span>
+                <span className="shrink-0">
+                  {batchDone ? `总耗时 ${formatDuration(batchElapsedMs)}` : `已用时 ${formatDuration(batchElapsedMs)}`}
+                </span>
+              </div>
+            </div>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
