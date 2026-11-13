@@ -23,12 +23,15 @@ function VideoManagementPage() {
   const [batchScraping, setBatchScraping] = useState(false)
   const batchStopRef = useRef(false)
   const [copiedVideoId, setCopiedVideoId] = useState(null)
+  const [logsVisible, setLogsVisible] = useState(true)
   const [settings, setSettings] = useState(COLUMNS.map((c) => ({ key: c.key, visible: true, width: 150 })))
   const [showSettings, setShowSettings] = useState(false)
   const fileInputRef = useRef(null)
 
-  const log = (level, message) =>
+  const log = (level, message) => {
     setLogs((entries) => [...entries, { id: `${Date.now()}-${Math.random()}`, time: new Date().toLocaleTimeString(), level, message }])
+    setLogsVisible(true)
+  }
 
   const fetchVideos = async () => {
     setLoadingVideos(true)
@@ -197,7 +200,7 @@ function VideoManagementPage() {
       </div>
       {showSettings && <div style={{ padding: 12, border: '1px solid var(--border)', marginTop: 12 }}>{COLUMNS.map((c) => { const setting = settings.find((s) => s.key === c.key) || { visible: true, width: 150 }; return <label key={c.key} style={{ marginRight: 16 }}>{c.label} <input type="checkbox" checked={setting.visible} onChange={(e) => updateSettings(settings.map((s) => s.key === c.key ? { ...s, visible: e.target.checked } : s))} /> <input aria-label={`${c.label}宽度`} type="number" min="60" max="800" value={setting.width} style={{ width: 70 }} onChange={(e) => updateSettings(settings.map((s) => s.key === c.key ? { ...s, width: Number(e.target.value) } : s))} /></label> })}</div>}
 
-      {logs.length > 0 && <ExcelImportLog logs={logs} />}
+      {logs.length > 0 && logsVisible && <ExcelImportLog logs={logs} onClose={() => setLogsVisible(false)} />}
 
       <p style={{ textAlign: 'left', marginTop: 16 }}>
         共 {rows.length} 条记录
@@ -294,7 +297,7 @@ function VideoManagementPage() {
                   >
                     <button
                       type="button" className="counter" onClick={() => scrapeRow(row)} disabled={scrapingId === row.id || batchScraping}
-                    >{scrapingId === row.id ? '抓取中…' : '测试'}</button>{' '}
+                    >{scrapingId === row.id ? '抓取中…' : '抓取'}</button>{' '}
                     <button
                       type="button"
                       className="counter"
@@ -314,11 +317,30 @@ function VideoManagementPage() {
   )
 }
 
-function ExcelImportLog({ logs }) {
+function ExcelImportLog({ logs, onClose }) {
   const colors = { info: 'var(--text)', success: '#2e7d32', error: '#c0392b' }
+  const [copied, setCopied] = useState(false)
+
+  const copyLogs = async () => {
+    const text = logs.map((entry) => `[${entry.time}] [${entry.level}] ${entry.message}`).join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* ignore clipboard permission failures */
+    }
+  }
+
   return (
     <section aria-live="polite" style={{ marginTop: 16, textAlign: 'left' }}>
-      <h2 style={{ margin: '8px 0', fontSize: 16 }}>Excel 导入日志</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '8px 0' }}>
+        <h2 style={{ margin: 0, fontSize: 16 }}>日志</h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="counter" onClick={copyLogs}>{copied ? '已复制' : '复制'}</button>
+          <button type="button" className="counter" onClick={onClose}>关闭</button>
+        </div>
+      </div>
       <ul style={{ margin: 0, padding: '10px 12px 10px 36px', border: '1px solid var(--border)', borderRadius: 8 }}>
         {logs.map((entry) => <li key={entry.id} style={{ color: colors[entry.level], margin: '4px 0' }}><time>{entry.time}</time>　{entry.message}</li>)}
       </ul>

@@ -33,6 +33,7 @@ class YtDlpService(
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
 
     fun fetchVideoInfo(url: String): YtDlpTestResult {
+        val targetUrl = resolveUrl(url.trim())
         val start = System.currentTimeMillis()
         val logs = mutableListOf<String>()
         fun log(message: String) {
@@ -42,7 +43,7 @@ class YtDlpService(
         }
 
         val effectiveProxy = defaultProxy.trim().takeIf { it.isNotEmpty() }
-        log("开始抓取，目标 URL：$url")
+        log("开始抓取，目标 URL：$targetUrl")
         log(if (effectiveProxy != null) "使用代理：$effectiveProxy" else "未配置代理，直连抓取")
 
         // --verbose 会把 yt-dlp 内部请求、重定向、代理连接、HTTP 状态码等调试信息输出到 stderr，
@@ -52,7 +53,7 @@ class YtDlpService(
             command.add("--proxy")
             command.add(effectiveProxy)
         }
-        command.add(url)
+        command.add(targetUrl)
         log("执行命令：${command.joinToString(" ")}")
 
         val process = try {
@@ -133,6 +134,10 @@ class YtDlpService(
             failure("解析 yt-dlp 输出失败：${e.message}", durationMs, logs)
         }
     }
+
+    private fun resolveUrl(input: String): String =
+        if (input.startsWith("http://") || input.startsWith("https://")) input
+        else "https://www.tiktok.com/@_/video/$input"
 
     private fun failure(message: String, durationMs: Long, logs: List<String>) = YtDlpTestResult(
         success = false,
