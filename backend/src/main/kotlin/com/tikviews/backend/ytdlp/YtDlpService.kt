@@ -32,7 +32,7 @@ class YtDlpService(
     private val logger = LoggerFactory.getLogger(YtDlpService::class.java)
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
 
-    fun fetchVideoInfo(url: String, proxy: String? = null): YtDlpTestResult {
+    fun fetchVideoInfo(url: String): YtDlpTestResult {
         val start = System.currentTimeMillis()
         val logs = mutableListOf<String>()
         fun log(message: String) {
@@ -41,7 +41,7 @@ class YtDlpService(
             logger.info(line)
         }
 
-        val effectiveProxy = proxy?.trim()?.takeIf { it.isNotEmpty() } ?: defaultProxy.trim().takeIf { it.isNotEmpty() }
+        val effectiveProxy = defaultProxy.trim().takeIf { it.isNotEmpty() }
         log("开始抓取，目标 URL：$url")
         log(if (effectiveProxy != null) "使用代理：$effectiveProxy" else "未配置代理，直连抓取")
 
@@ -56,7 +56,12 @@ class YtDlpService(
         log("执行命令：${command.joinToString(" ")}")
 
         val process = try {
-            ProcessBuilder(command).start()
+            ProcessBuilder(command).apply {
+                // Do not let machine-wide proxy environment variables affect yt-dlp implicitly.
+                listOf("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy").forEach {
+                    environment().remove(it)
+                }
+            }.start()
         } catch (e: Exception) {
             log("启动 yt-dlp 进程失败：${e.message}")
             return failure(

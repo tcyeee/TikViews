@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 
-data class YtDlpTestRequest(val input: String, val proxy: String? = null)
+data class YtDlpTestRequest(val input: String)
 
 @RestController
 @RequestMapping("/api/ytdlp")
@@ -19,7 +19,7 @@ class YtDlpController(private val ytDlpService: YtDlpService) {
         if (input.isBlank()) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入视频 ID 或完整链接")
         }
-        return ytDlpService.fetchVideoInfo(resolveUrl(input), request.proxy)
+        return ytDlpService.fetchVideoInfo(resolveUrl(input))
     }
 
     private fun resolveUrl(input: String): String {
