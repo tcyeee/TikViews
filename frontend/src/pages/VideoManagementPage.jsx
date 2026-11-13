@@ -174,7 +174,7 @@ function VideoManagementPage() {
         <p style={{ textAlign: 'left', color: '#c0392b' }}>{loadError}</p>
       ) : (
         <div style={{ overflowX: 'auto', marginTop: 16 }}>
-          <table style={{ borderCollapse: 'collapse', textAlign: 'left' }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, textAlign: 'left' }}>
             <thead>
               <tr>
                 {COLUMNS.filter((col) => settings.find((s) => s.key === col.key)?.visible !== false).map((col) => (
@@ -208,6 +208,11 @@ function VideoManagementPage() {
                     padding: '8px 12px',
                     whiteSpace: 'nowrap',
                     color: 'var(--text-h)',
+                    position: 'sticky',
+                    right: 0,
+                    zIndex: 2,
+                    background: 'var(--background)',
+                    boxShadow: '-8px 0 8px -8px var(--border)',
                   }}
                 >
                   操作
@@ -245,6 +250,11 @@ function VideoManagementPage() {
                       borderBottom: '1px solid var(--border)',
                       padding: '8px 12px',
                       whiteSpace: 'nowrap',
+                      position: 'sticky',
+                      right: 0,
+                      zIndex: 1,
+                      background: 'var(--background)',
+                      boxShadow: '-8px 0 8px -8px var(--border)',
                     }}
                   >
                     <button
