@@ -20,13 +20,18 @@ function VideoManagementPage() {
   const [clearing, setClearing] = useState(false)
   const [removingId, setRemovingId] = useState(null)
   const [scrapingId, setScrapingId] = useState(null)
+  const [batchScraping, setBatchScraping] = useState(false)
+  const batchStopRef = useRef(false)
   const [copiedVideoId, setCopiedVideoId] = useState(null)
+  const [logsVisible, setLogsVisible] = useState(true)
   const [settings, setSettings] = useState(COLUMNS.map((c) => ({ key: c.key, visible: true, width: 150 })))
   const [showSettings, setShowSettings] = useState(false)
   const fileInputRef = useRef(null)
 
-  const log = (level, message) =>
+  const log = (level, message) => {
     setLogs((entries) => [...entries, { id: `${Date.now()}-${Math.random()}`, time: new Date().toLocaleTimeString(), level, message }])
+    setLogsVisible(true)
+  }
 
   const fetchVideos = async () => {
     setLoadingVideos(true)
@@ -61,6 +66,31 @@ function VideoManagementPage() {
       setRows((current) => current.map((item) => item.id === row.id ? data : item))
       log('success', `抓取完成：${row.videoId}`)
     } catch (err) { log('error', `抓取失败：${err.message}`) } finally { setScrapingId(null) }
+  }
+
+  const handleBatchScrapeClick = async () => {
+    if (batchScraping) {
+      batchStopRef.current = true
+      log('info', '正在停止批量抓取…')
+      return
+    }
+    if (rows.length === 0) return
+
+    batchStopRef.current = false
+    setBatchScraping(true)
+    log('info', `开始批量抓取，共 ${rows.length} 条`)
+    try {
+      for (const row of rows) {
+        if (batchStopRef.current) {
+          log('info', '批量抓取已停止')
+          break
+        }
+        await scrapeRow(row)
+      }
+    } finally {
+      setBatchScraping(false)
+      batchStopRef.current = false
+    }
   }
 
   const copyVideoId = async (videoId) => {
@@ -146,7 +176,15 @@ function VideoManagementPage() {
     <section style={{ width: '100%', padding: '32px 20px', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
         <button type="button" className="counter" onClick={() => setShowSettings((v) => !v)}>字段设置</button>
-        <button type="button" className="counter" onClick={handleClearAll} disabled={clearing || uploading || rows.length === 0}>
+        <button
+          type="button"
+          className="counter"
+          onClick={handleBatchScrapeClick}
+          disabled={clearing || uploading || (!batchScraping && rows.length === 0)}
+        >
+          {batchScraping ? '停止抓取' : '批量抓取'}
+        </button>
+        <button type="button" className="counter" onClick={handleClearAll} disabled={clearing || uploading || batchScraping || rows.length === 0}>
           {clearing ? 'Clearing…' : '清空表格'}
         </button>
         <input
@@ -156,13 +194,13 @@ function VideoManagementPage() {
           onChange={handleFileChange}
           style={{ display: 'none' }}
         />
-        <button type="button" className="counter" onClick={handleImportButtonClick} disabled={uploading}>
+        <button type="button" className="counter" onClick={handleImportButtonClick} disabled={uploading || batchScraping}>
           {uploading ? 'Importing…' : 'Excel 导入'}
         </button>
       </div>
       {showSettings && <div style={{ padding: 12, border: '1px solid var(--border)', marginTop: 12 }}>{COLUMNS.map((c) => { const setting = settings.find((s) => s.key === c.key) || { visible: true, width: 150 }; return <label key={c.key} style={{ marginRight: 16 }}>{c.label} <input type="checkbox" checked={setting.visible} onChange={(e) => updateSettings(settings.map((s) => s.key === c.key ? { ...s, visible: e.target.checked } : s))} /> <input aria-label={`${c.label}宽度`} type="number" min="60" max="800" value={setting.width} style={{ width: 70 }} onChange={(e) => updateSettings(settings.map((s) => s.key === c.key ? { ...s, width: Number(e.target.value) } : s))} /></label> })}</div>}
 
-      {logs.length > 0 && <ExcelImportLog logs={logs} />}
+      {logs.length > 0 && logsVisible && <ExcelImportLog logs={logs} onClose={() => setLogsVisible(false)} />}
 
       <p style={{ textAlign: 'left', marginTop: 16 }}>
         共 {rows.length} 条记录
@@ -258,13 +296,13 @@ function VideoManagementPage() {
                     }}
                   >
                     <button
-                      type="button" className="counter" onClick={() => scrapeRow(row)} disabled={scrapingId === row.id}
-                    >{scrapingId === row.id ? '抓取中…' : '测试'}</button>{' '}
+                      type="button" className="counter" onClick={() => scrapeRow(row)} disabled={scrapingId === row.id || batchScraping}
+                    >{scrapingId === row.id ? '抓取中…' : '抓取'}</button>{' '}
                     <button
                       type="button"
                       className="counter"
                       onClick={() => handleRemoveRow(row.id)}
-                      disabled={removingId === row.id}
+                      disabled={removingId === row.id || batchScraping}
                     >
                       {removingId === row.id ? 'Removing…' : '移除'}
                     </button>
@@ -279,11 +317,30 @@ function VideoManagementPage() {
   )
 }
 
-function ExcelImportLog({ logs }) {
+function ExcelImportLog({ logs, onClose }) {
   const colors = { info: 'var(--text)', success: '#2e7d32', error: '#c0392b' }
+  const [copied, setCopied] = useState(false)
+
+  const copyLogs = async () => {
+    const text = logs.map((entry) => `[${entry.time}] [${entry.level}] ${entry.message}`).join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* ignore clipboard permission failures */
+    }
+  }
+
   return (
     <section aria-live="polite" style={{ marginTop: 16, textAlign: 'left' }}>
-      <h2 style={{ margin: '8px 0', fontSize: 16 }}>Excel 导入日志</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '8px 0' }}>
+        <h2 style={{ margin: 0, fontSize: 16 }}>日志</h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="counter" onClick={copyLogs}>{copied ? '已复制' : '复制'}</button>
+          <button type="button" className="counter" onClick={onClose}>关闭</button>
+        </div>
+      </div>
       <ul style={{ margin: 0, padding: '10px 12px 10px 36px', border: '1px solid var(--border)', borderRadius: 8 }}>
         {logs.map((entry) => <li key={entry.id} style={{ color: colors[entry.level], margin: '4px 0' }}><time>{entry.time}</time>　{entry.message}</li>)}
       </ul>
