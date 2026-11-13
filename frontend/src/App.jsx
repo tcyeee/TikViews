@@ -6,6 +6,7 @@ import VideoScrapeTestPage from './pages/VideoScrapeTestPage.jsx'
 import { useDynamicFavicon } from './lib/useDynamicFavicon.js'
 import { MessageProvider } from './lib/MessageContext.jsx'
 import MessageCenter from './components/MessageCenter.jsx'
+import { track } from './lib/analytics.js'
 
 function pageFromPath(pathname) {
   if (pathname === '/' || pathname === '/videos') return 'videos'
@@ -24,6 +25,10 @@ function AppContent() {
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
+
+  useEffect(() => {
+    track(`view/${page}`)
+  }, [page])
 
   const navigate = (path) => {
     if (window.location.pathname !== path) {

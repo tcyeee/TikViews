@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/pagination'
 import { useMessages } from '@/lib/MessageContext.jsx'
 import { cn } from '@/lib/utils'
+import { track } from '@/lib/analytics.js'
 
 const COLUMNS = [
   { key: 'authorNickname', label: '达人昵称' },
@@ -214,6 +215,7 @@ function VideoManagementPage() {
     }
     if (rows.length === 0) return
 
+    track('scrape/batch-start')
     const startedAt = Date.now()
     batchStopRef.current = false
     setBatchScraping(true)
@@ -237,6 +239,7 @@ function VideoManagementPage() {
         setBatchCompleted((c) => c + 1)
         if (blocked) {
           log('error', 'TikTok 已临时限制本服务器 IP 的访问，批量抓取已自动停止，请稍后再试')
+          track('scrape/batch-blocked')
           break
         }
         if (success) {
@@ -260,6 +263,7 @@ function VideoManagementPage() {
       setBatchCurrentRow(null)
       setBatchDone(true)
       setBatchElapsedMs(Date.now() - startedAt)
+      track('scrape/batch-complete')
     }
   }
 
@@ -299,6 +303,7 @@ function VideoManagementPage() {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
       log('success', `导出成功：${filename}`)
+      track('excel/export')
     } catch (err) {
       log('error', `导出失败：${err.message || 'Unknown error'}`)
     } finally {
@@ -362,6 +367,7 @@ function VideoManagementPage() {
       }
       if (!Array.isArray(data.rows)) throw new Error('Server response is missing valid rows data')
       log('success', `Import successful: ${data.rows.length} records loaded`)
+      track('excel/import')
       await fetchVideos()
     } catch (err) {
       log('error', err.name === 'AbortError' ? 'Import timed out: server response exceeded 60 seconds. Please try again.' : `Import failed: ${err.message || 'Unknown error'}`)

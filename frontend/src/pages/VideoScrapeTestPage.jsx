@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { track } from '@/lib/analytics.js'
 
 function VideoScrapeTestPage() {
   const [input, setInput] = useState('')
@@ -25,7 +26,9 @@ function VideoScrapeTestPage() {
         const text = await res.text()
         throw new Error(text || `Request failed (${res.status})`)
       }
-      setResult(await res.json())
+      const data = await res.json()
+      setResult(data)
+      track('scrape/test', data.success ? 'success' : 'failed')
     } catch (err) {
       setError(err.message || 'Request failed')
     } finally {
