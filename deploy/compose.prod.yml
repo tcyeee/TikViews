@@ -4,6 +4,10 @@ services:
       context: .
       dockerfile: deploy/backend.Dockerfile
     restart: unless-stopped
+    environment:
+      # yt-dlp runs inside this container, so the proxy must be reachable from
+      # the backend container (for example, a service name on a shared Docker network).
+      YTDLP_PROXY: ${YTDLP_PROXY:-}
     volumes:
       - tikviews-data:/data
 
