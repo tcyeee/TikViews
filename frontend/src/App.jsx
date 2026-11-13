@@ -6,6 +6,21 @@ import './App.css'
 
 function App() {
   const [count, setCount] = useState(0)
+  const [backendResult, setBackendResult] = useState('')
+
+  const testBackend = async () => {
+    setBackendResult('Loading...')
+    try {
+      const response = await fetch('/api/ping')
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      const data = await response.json()
+      setBackendResult(`${data.message} (${data.timestamp})`)
+    } catch (error) {
+      setBackendResult(`Request failed: ${error.message}`)
+    }
+  }
 
   return (
     <>
@@ -28,6 +43,12 @@ function App() {
         >
           Count is {count}
         </button>
+        <div>
+          <button type="button" className="counter" onClick={testBackend}>
+            Test backend connection
+          </button>
+          {backendResult && <p>{backendResult}</p>}
+        </div>
       </section>
 
       <div className="ticks"></div>
