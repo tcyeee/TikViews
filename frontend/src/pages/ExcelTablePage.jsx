@@ -7,7 +7,7 @@ const COLUMNS = [
   { key: 'vv', label: 'VV' },
 ]
 
-function ExcelTablePage({ fileName, rows, onBack }) {
+function ExcelTablePage({ fileName, rows, logs = [], onBack }) {
   return (
     <section style={{ width: '100%', padding: '32px 20px', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
@@ -20,6 +20,11 @@ function ExcelTablePage({ fileName, rows, onBack }) {
       <p style={{ textAlign: 'left', marginTop: 16 }}>
         文件：{fileName}　共 {rows.length} 条记录
       </p>
+
+      {logs.length > 0 && <section aria-live="polite" style={{ textAlign: 'left', marginTop: 16 }}>
+        <h2>Excel 导入日志</h2>
+        <ul>{logs.map((entry) => <li key={entry.id}><time>{entry.time}</time>　{entry.message}</li>)}</ul>
+      </section>}
 
       <div style={{ overflowX: 'auto', marginTop: 16 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>

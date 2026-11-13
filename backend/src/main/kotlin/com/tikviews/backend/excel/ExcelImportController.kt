@@ -20,6 +20,8 @@ class ExcelImportController(private val excelImportService: ExcelImportService) 
             excelImportService.parse(file)
         } catch (e: ExcelFormatException) {
             return ResponseEntity.badRequest().body(ExcelImportError(e.message ?: "导入失败"))
+        } catch (e: Exception) {
+            return ResponseEntity.internalServerError().body(ExcelImportError("Excel 导入处理失败：${e.message ?: "未知错误"}"))
         }
         return ResponseEntity.ok(ExcelImportResponse(rows, rows.size))
     }
