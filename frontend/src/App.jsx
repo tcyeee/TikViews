@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import { Button } from '@/components/ui/button'
 import VideoManagementPage from './pages/VideoManagementPage.jsx'
 import VideoScrapeTestPage from './pages/VideoScrapeTestPage.jsx'
 import { useDynamicFavicon } from './lib/useDynamicFavicon.js'
+import { MessageProvider } from './lib/MessageContext.jsx'
+import MessageCenter from './components/MessageCenter.jsx'
 
 function pageFromPath(pathname) {
   if (pathname === '/' || pathname === '/videos') return 'videos'
@@ -11,7 +14,7 @@ function pageFromPath(pathname) {
   return 'home'
 }
 
-function App() {
+function AppContent() {
   const [page, setPage] = useState(() => pageFromPath(window.location.pathname))
   const [backendResult, setBackendResult] = useState('')
   const [backendOnline, setBackendOnline] = useState(false)
@@ -110,9 +113,9 @@ function App() {
       <h1>TikTok 视频播放量批量查询</h1>
 
       <div>
-        <button type="button" className="counter" onClick={testBackend}>
+        <Button type="button" onClick={testBackend}>
           Test backend connection
-        </button>
+        </Button>
         {backendResult && <p>{backendResult}</p>}
       </div>
     </section>
@@ -179,12 +182,21 @@ function AppNavigation({ backendOnline, page, onNavigate }) {
         </button>
         <button type="button" className={`app-navigation-link ${page === 'scrape-test' ? 'is-active' : ''}`} onClick={handleScrapeTestClick}>抓取测试</button>
         <button type="button" className={`app-navigation-link ${page === 'about' ? 'is-active' : ''}`} onClick={handleAboutClick}>网站信息</button>
+        <MessageCenter />
         <div className={`backend-status ${backendOnline ? 'is-online' : 'is-offline'}`} role="status" aria-live="polite">
           <span className="backend-status-dot" aria-hidden="true" />
           {backendOnline ? 'Online' : 'Offline'}
         </div>
       </div>
     </header>
+  )
+}
+
+function App() {
+  return (
+    <MessageProvider>
+      <AppContent />
+    </MessageProvider>
   )
 }
 

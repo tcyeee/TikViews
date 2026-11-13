@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 
 function VideoScrapeTestPage() {
   const [input, setInput] = useState('')
@@ -39,31 +42,29 @@ function VideoScrapeTestPage() {
         <p style={{ color: 'var(--text)' }}>
           仅用于测试：输入 TikTok 视频 ID（19 位数字）或完整视频链接，验证后端能否通过 yt-dlp 成功取得该视频的播放量等信息。
         </p>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8 }}>
-          <input
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <Input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="例如 7123456789012345678 或 https://www.tiktok.com/@user/video/..."
-            style={{ flex: 1, padding: '8px 12px', fontSize: 14 }}
+            className="flex-1"
           />
-          <button type="submit" disabled={loading} style={{ padding: '8px 16px' }}>
+          <Button type="submit" disabled={loading}>
             {loading ? 'Loading…' : '开始测试'}
-          </button>
+          </Button>
         </form>
 
-        {error && <p style={{ color: '#c0392b', marginTop: 16 }}>Request error: {error}</p>}
+        {error && <p className="mt-4 text-destructive">Request error: {error}</p>}
 
         {result && (
           <section style={{ marginTop: 24, padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
-            <p>
+            <p className="flex items-center gap-2">
               <strong>Status:</strong>
-              {result.success ? (
-                <span style={{ color: '#2e7d32' }}>Success</span>
-              ) : (
-                <span style={{ color: '#c0392b' }}>Failed</span>
-              )}
-              {' '}({result.durationMs} ms)
+              <Badge variant={result.success ? 'success' : 'destructive'}>
+                {result.success ? 'Success' : 'Failed'}
+              </Badge>
+              ({result.durationMs} ms)
             </p>
             {result.success ? (
               <ul>

@@ -1,7 +1,7 @@
 .app-navigation {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -39,6 +39,117 @@
 .app-navigation-link:hover,
 .app-navigation-link.is-active {
   color: var(--foreground);
+}
+
+.message-center-trigger {
+  position: relative;
+}
+
+.message-center-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: #c0392b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  vertical-align: middle;
+}
+
+.message-center-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 60;
+  width: 360px;
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.message-center-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.message-center-header h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.message-center-empty {
+  margin: 0;
+  padding: 24px 14px;
+  text-align: center;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.message-center-list {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.message-center-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.message-center-item.is-unread {
+  background: var(--accent-bg);
+}
+
+.message-center-item:hover {
+  background: var(--accent);
+}
+
+.message-center-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+}
+
+.message-center-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.message-center-content p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.message-center-content time {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 11px;
 }
 
 .backend-status {
