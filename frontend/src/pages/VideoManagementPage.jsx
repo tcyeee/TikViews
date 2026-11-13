@@ -20,6 +20,8 @@ function VideoManagementPage() {
   const [clearing, setClearing] = useState(false)
   const [removingId, setRemovingId] = useState(null)
   const [scrapingId, setScrapingId] = useState(null)
+  const [batchScraping, setBatchScraping] = useState(false)
+  const batchStopRef = useRef(false)
   const [copiedVideoId, setCopiedVideoId] = useState(null)
   const [settings, setSettings] = useState(COLUMNS.map((c) => ({ key: c.key, visible: true, width: 150 })))
   const [showSettings, setShowSettings] = useState(false)
@@ -61,6 +63,31 @@ function VideoManagementPage() {
       setRows((current) => current.map((item) => item.id === row.id ? data : item))
       log('success', `抓取完成：${row.videoId}`)
     } catch (err) { log('error', `抓取失败：${err.message}`) } finally { setScrapingId(null) }
+  }
+
+  const handleBatchScrapeClick = async () => {
+    if (batchScraping) {
+      batchStopRef.current = true
+      log('info', '正在停止批量抓取…')
+      return
+    }
+    if (rows.length === 0) return
+
+    batchStopRef.current = false
+    setBatchScraping(true)
+    log('info', `开始批量抓取，共 ${rows.length} 条`)
+    try {
+      for (const row of rows) {
+        if (batchStopRef.current) {
+          log('info', '批量抓取已停止')
+          break
+        }
+        await scrapeRow(row)
+      }
+    } finally {
+      setBatchScraping(false)
+      batchStopRef.current = false
+    }
   }
 
   const copyVideoId = async (videoId) => {
@@ -146,7 +173,15 @@ function VideoManagementPage() {
     <section style={{ width: '100%', padding: '32px 20px', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
         <button type="button" className="counter" onClick={() => setShowSettings((v) => !v)}>字段设置</button>
-        <button type="button" className="counter" onClick={handleClearAll} disabled={clearing || uploading || rows.length === 0}>
+        <button
+          type="button"
+          className="counter"
+          onClick={handleBatchScrapeClick}
+          disabled={clearing || uploading || (!batchScraping && rows.length === 0)}
+        >
+          {batchScraping ? '停止抓取' : '批量抓取'}
+        </button>
+        <button type="button" className="counter" onClick={handleClearAll} disabled={clearing || uploading || batchScraping || rows.length === 0}>
           {clearing ? 'Clearing…' : '清空表格'}
         </button>
         <input
@@ -156,7 +191,7 @@ function VideoManagementPage() {
           onChange={handleFileChange}
           style={{ display: 'none' }}
         />
-        <button type="button" className="counter" onClick={handleImportButtonClick} disabled={uploading}>
+        <button type="button" className="counter" onClick={handleImportButtonClick} disabled={uploading || batchScraping}>
           {uploading ? 'Importing…' : 'Excel 导入'}
         </button>
       </div>
@@ -258,13 +293,13 @@ function VideoManagementPage() {
                     }}
                   >
                     <button
-                      type="button" className="counter" onClick={() => scrapeRow(row)} disabled={scrapingId === row.id}
+                      type="button" className="counter" onClick={() => scrapeRow(row)} disabled={scrapingId === row.id || batchScraping}
                     >{scrapingId === row.id ? '抓取中…' : '测试'}</button>{' '}
                     <button
                       type="button"
                       className="counter"
                       onClick={() => handleRemoveRow(row.id)}
-                      disabled={removingId === row.id}
+                      disabled={removingId === row.id || batchScraping}
                     >
                       {removingId === row.id ? 'Removing…' : '移除'}
                     </button>
