@@ -7,6 +7,7 @@ plugins {
 
 group = "com.tikviews"
 version = "0.0.1-SNAPSHOT"
+description = "TikTok 视频播放量批量查询工具 - 后端：负责 Excel 解析、批量播放量查询调度与结果导出"
 
 java {
 	toolchain {
