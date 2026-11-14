@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
+import { Power } from 'lucide-react'
 import './App.css'
 import { Button } from '@/components/ui/button'
 import VideoManagementPage from './pages/VideoManagementPage.jsx'
 import VideoScrapeTestPage from './pages/VideoScrapeTestPage.jsx'
+import MessagesPage from './pages/MessagesPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import { MessageProvider } from './lib/MessageContext.jsx'
-import MessageCenter from './components/MessageCenter.jsx'
+import UserMenu from './components/UserMenu.jsx'
+import { logout } from './lib/auth.js'
 import { track } from './lib/analytics.js'
 
 function pageFromPath(pathname) {
   if (pathname === '/' || pathname === '/videos') return 'videos'
   if (pathname === '/about') return 'about'
   if (pathname === '/scrape-test') return 'scrape-test'
+  if (pathname === '/messages') return 'messages'
   return 'home'
 }
 
@@ -83,18 +87,22 @@ function AppContent() {
   if (page === 'videos') {
     return (
       <>
-        <AppNavigation backendOnline={backendOnline} page={page} onNavigate={navigate} />
+        <AppNavigation page={page} onNavigate={navigate} />
         <VideoManagementPage />
       </>
     )
   }
 
   if (page === 'about') {
-    return <><AppNavigation backendOnline={backendOnline} page={page} onNavigate={navigate} /><AboutPage /></>
+    return <><AppNavigation page={page} onNavigate={navigate} /><AboutPage backendOnline={backendOnline} /></>
   }
 
   if (page === 'scrape-test') {
-    return <><AppNavigation backendOnline={backendOnline} page={page} onNavigate={navigate} /><VideoScrapeTestPage /></>
+    return <><AppNavigation page={page} onNavigate={navigate} /><VideoScrapeTestPage /></>
+  }
+
+  if (page === 'messages') {
+    return <><AppNavigation page={page} onNavigate={navigate} /><MessagesPage /></>
   }
 
   const testBackend = async () => {
@@ -113,7 +121,7 @@ function AppContent() {
 
   return (
     <>
-    <AppNavigation backendOnline={backendOnline} page={page} onNavigate={navigate} />
+    <AppNavigation page={page} onNavigate={navigate} />
     <section id="center">
       <h1>TikTok 视频播放量批量查询</h1>
 
@@ -128,34 +136,90 @@ function AppContent() {
   )
 }
 
-function AboutPage() {
+function AboutPage({ backendOnline }) {
   return (
     <main className="about-page">
       <div className="about-grid-bg" aria-hidden="true" />
-      <img className="about-icon" src="/favicon.png" alt="TikViews 图标" />
-      <h1>TikTok 视频播放量批量查询</h1>
-      <p>帮助你批量查询 TikTok 视频的最新播放量，并通过清晰的明细与汇总快速了解查询结果。</p>
+      <div className="about-main">
+        <img className="about-icon" src="/favicon.png" alt="TikViews 图标" />
+        <h1>TikTok 视频播放量批量查询</h1>
+        <p>帮助你批量查询 TikTok 视频的最新播放量，并通过清晰的明细与汇总快速了解查询结果。</p>
+        <section className="about-debug" aria-label="Debug">
+          <div className="about-debug-header">
+            <div className={`backend-status ${backendOnline ? 'is-online' : 'is-offline'}`} role="status" aria-live="polite">
+              <span className="backend-status-dot" aria-hidden="true" />
+              后端状态：{backendOnline ? 'Online' : 'Offline'}
+            </div>
+            <button
+              type="button"
+              className="about-debug-logout"
+              onClick={logout}
+              aria-label="退出登录"
+              title="退出登录"
+            >
+              <Power size={16} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="about-debug-arch">
+            <div className="about-debug-group">
+              <h3>前端</h3>
+              <dl>
+                <div><dt>语言</dt><dd>JavaScript (JSX)</dd></div>
+                <div><dt>框架</dt><dd>React 19 + Vite</dd></div>
+                <div><dt>样式</dt><dd>Tailwind CSS v4</dd></div>
+                <div><dt>组件</dt><dd>Radix UI + shadcn/ui 风格组件</dd></div>
+                <div><dt>图标</dt><dd>lucide-react</dd></div>
+              </dl>
+            </div>
+            <div className="about-debug-group">
+              <h3>后端</h3>
+              <dl>
+                <div><dt>语言</dt><dd>Kotlin</dd></div>
+                <div><dt>框架</dt><dd>Spring Boot (WebMVC + WebSocket)</dd></div>
+                <div><dt>数据库</dt><dd>SQLite</dd></div>
+                <div><dt>构建工具</dt><dd>Gradle (Kotlin DSL)</dd></div>
+                <div><dt>其他</dt><dd>Apache POI（Excel 解析）</dd></div>
+              </dl>
+            </div>
+          </div>
+        </section>
+      </div>
       <section className="about-author" aria-labelledby="about-author-title">
-        <h2 id="about-author-title">关于作者</h2>
-        <h3>Lucas <span>全栈开发工程师</span></h3>
-        <p>8 年全栈开发经验，热爱编程，擅长 Java、Rust 相关技术栈和区块链技术。喜欢构建有用的工具和应用，享受创造的过程，并乐于开源分享。</p>
-        <nav className="about-socials" aria-label="作者社交媒体">
-          <a href="https://x.com/tcyeee" target="_blank" rel="noreferrer">𝕏 <span>Twitter</span></a>
-          <a href="https://www.xiaohongshu.com/user/profile/5b9cf40e9a9c9300014062b4" target="_blank" rel="noreferrer"><span className="social-mark red">RED</span><span>小红书</span></a>
-          <a href="https://github.com/tcyeee" target="_blank" rel="noreferrer">
-            <span className="social-mark black">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.53v-2.04c-3.1.67-3.76-1.32-3.76-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15 1 .1.76 2.09 3.34 1.58.1-.72.39-1.21.7-1.49-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.21 1.15-2.99-.12-.28-.5-1.42.11-2.95 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.11-1.44 3.05-1.14 3.05-1.14.61 1.53.23 2.67.11 2.95.72.78 1.15 1.77 1.15 2.99 0 4.29-2.61 5.24-5.1 5.51.4.35.75 1.03.75 2.08V22c0 .29.2.63.76.52A11.1 11.1 0 0 0 12 .9Z"/></svg>
-            </span>
-            <span>GitHub</span>
-          </a>
-          <a href="https://space.bilibili.com/10879225" target="_blank" rel="noreferrer"><span className="social-mark blue">▶</span><span>Bilibili</span></a>
-        </nav>
+        <h2 id="about-author-title" className="sr-only">关于作者</h2>
+        <div className="about-author-name">
+          <span className="about-author-name-text">Lucas</span>
+          <span className="about-author-role">全栈开发工程师</span>
+        </div>
+        <div className="about-author-body">
+          <p>8 年全栈开发经验，热爱编程，擅长 Java、Rust 相关技术栈和区块链技术。喜欢构建有用的工具和应用，享受创造的过程，并乐于开源分享。</p>
+          <nav className="about-socials" aria-label="作者社交媒体">
+            <a href="https://x.com/tcyeee" target="_blank" rel="noreferrer">𝕏 <span>Twitter</span></a>
+            <a href="https://www.xiaohongshu.com/user/profile/5b9cf40e9a9c9300014062b4" target="_blank" rel="noreferrer">
+              <span className="social-mark red">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M22.405 9.879c.002.016.01.02.07.019h.725a.797.797 0 0 0 .78-.972.794.794 0 0 0-.884-.618.795.795 0 0 0-.692.794c0 .101-.002.666.001.777zm-11.509 4.808c-.203.001-1.353.004-1.685.003a2.528 2.528 0 0 1-.766-.126.025.025 0 0 0-.03.014L7.7 16.127a.025.025 0 0 0 .01.032c.111.06.336.124.495.124.66.01 1.32.002 1.981 0 .01 0 .02-.006.023-.015l.712-1.545a.025.025 0 0 0-.024-.036zM.477 9.91c-.071 0-.076.002-.076.01a.834.834 0 0 0-.01.08c-.027.397-.038.495-.234 3.06-.012.24-.034.389-.135.607-.026.057-.033.042.003.112.046.092.681 1.523.787 1.74.008.015.011.02.017.02.008 0 .033-.026.047-.044.147-.187.268-.391.371-.606.306-.635.44-1.325.486-1.706.014-.11.021-.22.03-.33l.204-2.616.022-.293c.003-.029 0-.033-.03-.034zm7.203 3.757a1.427 1.427 0 0 1-.135-.607c-.004-.084-.031-.39-.235-3.06a.443.443 0 0 0-.01-.082c-.004-.011-.052-.008-.076-.008h-1.48c-.03.001-.034.005-.03.034l.021.293c.076.982.153 1.964.233 2.946.05.4.186 1.085.487 1.706.103.215.223.419.37.606.015.018.037.051.048.049.02-.003.742-1.642.804-1.765.036-.07.03-.055.003-.112zm3.861-.913h-.872a.126.126 0 0 1-.116-.178l1.178-2.625a.025.025 0 0 0-.023-.035l-1.318-.003a.148.148 0 0 1-.135-.21l.876-1.954a.025.025 0 0 0-.023-.035h-1.56c-.01 0-.02.006-.024.015l-.926 2.068c-.085.169-.314.634-.399.938a.534.534 0 0 0-.02.191.46.46 0 0 0 .23.378.981.981 0 0 0 .46.119h.59c.041 0-.688 1.482-.834 1.972a.53.53 0 0 0-.023.172.465.465 0 0 0 .23.398c.15.092.342.12.475.12l1.66-.001c.01 0 .02-.006.023-.015l.575-1.28a.025.025 0 0 0-.024-.035zm-6.93-4.937H3.1a.032.032 0 0 0-.034.033c0 1.048-.01 2.795-.01 6.829 0 .288-.269.262-.28.262h-.74c-.04.001-.044.004-.04.047.001.037.465 1.064.555 1.263.01.02.03.033.051.033.157.003.767.009.938-.014.153-.02.3-.06.438-.132.3-.156.49-.419.595-.765.052-.172.075-.353.075-.533.002-2.33 0-4.66-.007-6.991a.032.032 0 0 0-.032-.032zm11.784 6.896c0-.014-.01-.021-.024-.022h-1.465c-.048-.001-.049-.002-.05-.049v-4.66c0-.072-.005-.07.07-.07h.863c.08 0 .075.004.075-.074V8.393c0-.082.006-.076-.08-.076h-3.5c-.064 0-.075-.006-.075.073v1.445c0 .083-.006.077.08.077h.854c.075 0 .07-.004.07.07v4.624c0 .095.008.084-.085.084-.37 0-1.11-.002-1.304 0-.048.001-.06.03-.06.03l-.697 1.519s-.014.025-.008.036c.006.01.013.008.058.008 1.748.003 3.495.002 5.243.002.03-.001.034-.006.035-.033v-1.539zm4.177-3.43c0 .013-.007.023-.02.024-.346.006-.692.004-1.037.004-.014-.002-.022-.01-.022-.024-.005-.434-.007-.869-.01-1.303 0-.072-.006-.071.07-.07l.733-.003c.041 0 .081.002.12.015.093.025.16.107.165.204.006.431.002 1.153.001 1.153zm2.67.244a1.953 1.953 0 0 0-.883-.222h-.18c-.04-.001-.04-.003-.042-.04V10.21c0-.132-.007-.263-.025-.394a1.823 1.823 0 0 0-.153-.53 1.533 1.533 0 0 0-.677-.71 2.167 2.167 0 0 0-1-.258c-.153-.003-.567 0-.72 0-.07 0-.068.004-.068-.065V7.76c0-.031-.01-.041-.046-.039H17.93s-.016 0-.023.007c-.006.006-.008.012-.008.023v.546c-.008.036-.057.015-.082.022h-.95c-.022.002-.028.008-.03.032v1.481c0 .09-.004.082.082.082h.913c.082 0 .072.128.072.128V11.19s.003.117-.06.117h-1.482c-.068 0-.06.082-.06.082v1.445s-.01.068.064.068h1.457c.082 0 .076-.006.076.079v3.225c0 .088-.007.081.082.081h1.43c.09 0 .082.007.082-.08v-3.27c0-.029.006-.035.033-.035l2.323-.003c.098 0 .191.02.28.061a.46.46 0 0 1 .274.407c.008.395.003.79.003 1.185 0 .259-.107.367-.33.367h-1.218c-.023.002-.029.008-.028.033.184.437.374.871.57 1.303a.045.045 0 0 0 .04.026c.17.005.34.002.51.003.15-.002.517.004.666-.01a2.03 2.03 0 0 0 .408-.075c.59-.18.975-.698.976-1.313v-1.981c0-.128-.01-.254-.034-.38 0 .078-.029-.641-.724-.998z"/></svg>
+              </span>
+              <span>小红书</span>
+            </a>
+            <a href="https://github.com/tcyeee" target="_blank" rel="noreferrer">
+              <span className="social-mark black">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.53v-2.04c-3.1.67-3.76-1.32-3.76-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15 1 .1.76 2.09 3.34 1.58.1-.72.39-1.21.7-1.49-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.21 1.15-2.99-.12-.28-.5-1.42.11-2.95 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.11-1.44 3.05-1.14 3.05-1.14.61 1.53.23 2.67.11 2.95.72.78 1.15 1.77 1.15 2.99 0 4.29-2.61 5.24-5.1 5.51.4.35.75 1.03.75 2.08V22c0 .29.2.63.76.52A11.1 11.1 0 0 0 12 .9Z"/></svg>
+              </span>
+              <span>GitHub</span>
+            </a>
+            <a href="https://space.bilibili.com/10879225" target="_blank" rel="noreferrer">
+              <span className="social-mark blue">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/></svg>
+              </span>
+              <span>Bilibili</span>
+            </a>
+          </nav>
+        </div>
       </section>
     </main>
   )
 }
 
-function AppNavigation({ backendOnline, page, onNavigate }) {
+function AppNavigation({ page, onNavigate }) {
   const handleBrandClick = (e) => {
     e.preventDefault()
     onNavigate('/')
@@ -164,14 +228,12 @@ function AppNavigation({ backendOnline, page, onNavigate }) {
     e.preventDefault()
     onNavigate('/videos')
   }
-  const handleAboutClick = (e) => {
-    e.preventDefault()
-    onNavigate('/about')
-  }
+  const handleAboutClick = () => onNavigate('/about')
   const handleScrapeTestClick = (e) => {
     e.preventDefault()
     onNavigate('/scrape-test')
   }
+  const handleNavigateMessages = () => onNavigate('/messages')
   return (
     <header className="app-navigation">
       <a className="app-navigation-brand" href="/" onClick={handleBrandClick}>TikViews</a>
@@ -184,12 +246,7 @@ function AppNavigation({ backendOnline, page, onNavigate }) {
           达人管理
         </button>
         <button type="button" className={`app-navigation-link ${page === 'scrape-test' ? 'is-active' : ''}`} onClick={handleScrapeTestClick}>抓取测试</button>
-        <button type="button" className={`app-navigation-link ${page === 'about' ? 'is-active' : ''}`} onClick={handleAboutClick}>网站信息</button>
-        <MessageCenter />
-        <div className={`backend-status ${backendOnline ? 'is-online' : 'is-offline'}`} role="status" aria-live="polite">
-          <span className="backend-status-dot" aria-hidden="true" />
-          {backendOnline ? 'Online' : 'Offline'}
-        </div>
+        <UserMenu onNavigateMessages={handleNavigateMessages} onNavigateAbout={handleAboutClick} />
       </div>
     </header>
   )
