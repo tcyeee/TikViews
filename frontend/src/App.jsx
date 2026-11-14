@@ -139,7 +139,7 @@ function AppContent() {
 function AboutPage({ backendOnline }) {
   return (
     <main className="about-page">
-      <div className="about-grid-bg" aria-hidden="true" />
+      <div className="grid-bg" aria-hidden="true" />
       <div className="about-main">
         <img className="about-icon" src="/favicon.png" alt="TikViews 图标" />
         <h1>TikTok 视频播放量批量查询</h1>
