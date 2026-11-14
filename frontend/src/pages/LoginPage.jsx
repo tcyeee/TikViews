@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 
 export default function LoginPage({ onSuccess }) {
   const [password, setPassword] = useState('')
@@ -42,11 +41,11 @@ export default function LoginPage({ onSuccess }) {
 
   return (
     <div className="login-page">
+      <div className="grid-bg" aria-hidden="true" />
       <form className="login-card" onSubmit={handleSubmit}>
         <h1>TikViews</h1>
         <p>请输入 4 位数字密码以继续</p>
         <div className="login-field">
-          <Label htmlFor="login-password">密码</Label>
           <Input
             id="login-password"
             type="password"

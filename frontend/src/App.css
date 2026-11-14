@@ -1,4 +1,6 @@
 .login-page {
+  position: relative;
+  overflow: hidden;
   display: flex;
   min-height: 100svh;
   place-content: center;
@@ -7,15 +9,14 @@
 }
 
 .login-card {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 16px;
   width: 100%;
   max-width: 320px;
   padding: 32px 28px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--accent-bg);
   text-align: center;
 }
 
@@ -360,7 +361,7 @@
 }
 
 /* Slowly drifting grid backdrop, in the style of viii.me. */
-.about-grid-bg {
+.grid-bg {
   position: absolute;
   inset: -44px;
   z-index: 0;
@@ -369,20 +370,22 @@
     linear-gradient(to right, color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px),
     linear-gradient(to bottom, color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px);
   background-size: 44px 44px;
-  animation: about-grid-drift 4.444s linear infinite;
+  animation: grid-bg-drift 4.444s linear infinite;
+  mask-image: radial-gradient(circle at center, transparent 0%, transparent 18%, #000 60%);
+  -webkit-mask-image: radial-gradient(circle at center, transparent 0%, transparent 18%, #000 60%);
 }
 
-@keyframes about-grid-drift {
+@keyframes grid-bg-drift {
   from { background-position: 0 0; }
   to { background-position: -44px -44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .about-grid-bg { animation: none; }
+  .grid-bg { animation: none; }
   .about-icon { animation: none; }
 }
 
-.about-page > :not(.about-grid-bg):not(.about-author) {
+.about-page > :not(.grid-bg):not(.about-author) {
   position: relative;
   z-index: 1;
 }
@@ -457,7 +460,7 @@
   padding-right: 32px;
   border-right: 1px solid var(--border);
 }
-.about-author-name-text { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+.about-author-name-text { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; color: #fe7a24; }
 .about-author-role { font-size: 13px; color: var(--muted-foreground); }
 .about-author-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .about-author-body p { margin: 0; font-size: 14px; }
