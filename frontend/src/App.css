@@ -63,6 +63,7 @@
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--background) 94%, transparent);
   backdrop-filter: blur(12px);
+  user-select: none;
 }
 
 .app-navigation-brand {
@@ -151,6 +152,7 @@
   padding: 6px;
   border: 1px solid var(--border);
   border-radius: 10px;
+  user-select: none;
   background: var(--popover);
   color: var(--popover-foreground);
   box-shadow: var(--shadow-lg);
@@ -320,6 +322,19 @@
   font-size: 12px;
 }
 
+.messages-page-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.messages-page-pagination-label {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
 .backend-status {
   display: inline-flex;
   align-items: center;
@@ -408,22 +423,7 @@
 
 .about-debug { width: min(100%, 820px); padding: 18px 24px; border: 1px dashed var(--border); border-radius: 16px; background: var(--accent-bg); text-align: left; }
 
-.about-debug-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-
-.about-debug-logout {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--card);
-  color: var(--muted-foreground);
-  cursor: pointer;
-}
-.about-debug-logout:hover { color: #c0392b; border-color: #c0392b; }
+.about-debug-header { display: flex; align-items: center; gap: 12px; }
 
 .about-debug-arch { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 .about-debug-group { flex: 1; min-width: 220px; }

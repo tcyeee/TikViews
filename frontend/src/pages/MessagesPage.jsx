@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useMessages } from '@/lib/MessageContext.jsx'
 
 const LEVEL_COLORS = { info: 'var(--text)', success: '#2e7d32', warning: '#b45309', error: '#c0392b' }
+const PAGE_SIZE = 10
 
 function formatTime(isoString) {
   try {
@@ -15,6 +16,15 @@ function formatTime(isoString) {
 function MessagesPage() {
   const { messages, unreadCount, markRead, markAllRead, clearMessages } = useMessages()
   const [expandedIds, setExpandedIds] = useState(() => new Set())
+  const [page, setPage] = useState(1)
+
+  const pageCount = Math.max(1, Math.ceil(messages.length / PAGE_SIZE))
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
+
+  const pagedMessages = messages.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const toggleExpand = (id) => {
     setExpandedIds((current) => {
@@ -42,8 +52,9 @@ function MessagesPage() {
       {messages.length === 0 ? (
         <p className="messages-page-empty">暂无消息</p>
       ) : (
-        <ul className="messages-page-list">
-          {messages.map((m) => {
+        <>
+          <ul className="messages-page-list">
+          {pagedMessages.map((m) => {
             const expanded = expandedIds.has(m.id)
             return (
               <li
@@ -64,7 +75,22 @@ function MessagesPage() {
               </li>
             )
           })}
-        </ul>
+          </ul>
+
+          {pageCount > 1 && (
+            <div className="messages-page-pagination">
+              <Button type="button" variant="outline" size="sm" onClick={() => setPage((p) => p - 1)} disabled={page <= 1}>
+                上一页
+              </Button>
+              <span className="messages-page-pagination-label">
+                {page} / {pageCount}
+              </span>
+              <Button type="button" variant="outline" size="sm" onClick={() => setPage((p) => p + 1)} disabled={page >= pageCount}>
+                下一页
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </main>
   )
