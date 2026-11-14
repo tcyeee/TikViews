@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Power } from 'lucide-react'
 import './App.css'
 import { Button } from '@/components/ui/button'
 import VideoManagementPage from './pages/VideoManagementPage.jsx'
@@ -8,7 +7,6 @@ import MessagesPage from './pages/MessagesPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import { MessageProvider } from './lib/MessageContext.jsx'
 import UserMenu from './components/UserMenu.jsx'
-import { logout } from './lib/auth.js'
 import { track } from './lib/analytics.js'
 
 function pageFromPath(pathname) {
@@ -150,15 +148,6 @@ function AboutPage({ backendOnline }) {
               <span className="backend-status-dot" aria-hidden="true" />
               后端状态：{backendOnline ? 'Online' : 'Offline'}
             </div>
-            <button
-              type="button"
-              className="about-debug-logout"
-              onClick={logout}
-              aria-label="退出登录"
-              title="退出登录"
-            >
-              <Power size={16} aria-hidden="true" />
-            </button>
           </div>
           <div className="about-debug-arch">
             <div className="about-debug-group">
