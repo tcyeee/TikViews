@@ -44,34 +44,59 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm run build
 
-      - name: Copy release to server
+      - name: Package release
+        run: tar czf release.tar.gz backend/build/libs/backend.jar frontend/dist deploy
+
+      # Upload the release to Alibaba Cloud OSS and sign a short-lived download
+      # URL. The server then pulls over that link instead of receiving the
+      # artifact directly over SSH — the long-haul GitHub-runner-to-server hop
+      # (which kept being flaky, see git history) only has to carry a tiny
+      # URL; the actual bytes move over OSS's network.
+      - name: Upload release to OSS
+        id: oss
         env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
-          SERVER_SSH_PORT: ${{ secrets.SERVER_SSH_PORT || 22 }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh
-          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "$SERVER_SSH_PORT" "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          python3 -m pip install --quiet oss2
+          OSS_KEY="deploy/tikviews/${GITHUB_SHA}.tar.gz"
+          URL=$(OSS_OBJECT_KEY="$OSS_KEY" python3 <<'PY'
+          import os
+          import oss2
 
-          ssh_cmd() { ssh -i ~/.ssh/deploy_key -p "$SERVER_SSH_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
+          key = os.environ["OSS_OBJECT_KEY"]
+          auth = oss2.Auth(os.environ["OSS_ACCESS_KEY_ID"], os.environ["OSS_ACCESS_KEY_SECRET"])
+          bucket = oss2.Bucket(auth, os.environ["OSS_ENDPOINT"], os.environ["OSS_BUCKET"])
+          bucket.put_object_from_file(key, "release.tar.gz")
+          # 1 hour TTL: long enough for the SSH deploy step, short enough that
+          # a leaked URL (e.g. in Actions debug logs) stops working quickly.
+          print(bucket.sign_url("GET", key, 3600))
+          PY
+          )
+          echo "::add-mask::$URL"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "key=$OSS_KEY" >> "$GITHUB_OUTPUT"
 
-          ssh_cmd "rm -rf ~/tikviews-release && mkdir -p ~/tikviews-release"
-          tar czf - backend/build/libs/backend.jar frontend/dist deploy \
-            | ssh_cmd "tar xzf - -C ~/tikviews-release"
-
-      - name: Start production services
+      - name: Deploy on server
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          DOWNLOAD_URL: ${{ steps.oss.outputs.url }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_SSH_PORT || 22 }}
+          envs: DOWNLOAD_URL
           script: |
-            set -eu
+            set -euo pipefail
+            rm -rf ~/tikviews-release && mkdir -p ~/tikviews-release
+            curl -fsSL "$DOWNLOAD_URL" -o /tmp/tikviews-release.tar.gz
+            tar xzf /tmp/tikviews-release.tar.gz -C ~/tikviews-release
+            rm -f /tmp/tikviews-release.tar.gz
+
             cd "$HOME/tikviews-release"
             mv backend/build/libs/backend.jar backend.jar
             docker compose -f deploy/compose.prod.yml up -d --build --remove-orphans
@@ -86,6 +111,29 @@ jobs:
               docker compose -f deploy/compose.prod.yml logs --tail=100
               exit 1
             fi
+
+      # Always remove the uploaded artifact, success or failure, so it
+      # doesn't linger in the bucket (belt-and-suspenders alongside a bucket
+      # lifecycle rule — see README).
+      - name: Clean up OSS artifact
+        if: always()
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+          OSS_OBJECT_KEY: ${{ steps.oss.outputs.key }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OSS_OBJECT_KEY:-}" ]; then exit 0; fi
+          python3 <<'PY'
+          import os
+          import oss2
+
+          auth = oss2.Auth(os.environ["OSS_ACCESS_KEY_ID"], os.environ["OSS_ACCESS_KEY_SECRET"])
+          bucket = oss2.Bucket(auth, os.environ["OSS_ENDPOINT"], os.environ["OSS_BUCKET"])
+          bucket.delete_object(os.environ["OSS_OBJECT_KEY"])
+          PY
 
       # Push a WeChat notification via Server酱 once the deploy + health check pass.
       # Set the SERVERCHAN_SENDKEY repo secret to enable; without it this step is a no-op.

@@ -65,6 +65,20 @@ YTDLP_PROXY=http://<代理容器在后端网络中可访问的地址>:<端口>
 
 若代理容器不在生产 Compose 创建的网络中，需先将其接入同一 Docker 网络，或使用服务器可从后端容器访问的地址。仅启动代理容器不会自动让后端使用它。后端重新创建后，抓取测试日志应显示“使用代理”。
 
+## 生产部署
+
+推送到 `prod` 分支即触发 `.github/workflows/deploy-prod.yml`：CI 构建前后端产物后，先打包上传到阿里云 OSS 并签发一个 1 小时有效的临时下载链接，再通过 SSH 让服务器拉取这个链接完成部署——这样 GitHub Actions Runner 到服务器之间只需要传一个很短的 URL，构建产物本身走 OSS 的网络，避免了直接用 SSH 长途传输大文件时的不稳定。部署完成后（无论成功还是失败）CI 会清理掉本次上传的 OSS 对象。
+
+需要在仓库 Secrets 中配置：
+
+- `SERVER_HOST` / `SERVER_USER` / `SERVER_SSH_KEY` / `SERVER_SSH_PORT`（可选，默认 22）：部署服务器的 SSH 信息。
+- `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET`：阿里云 OSS 的 AccessKey，建议使用仅有该 Bucket 读写权限的子账号。
+- `OSS_BUCKET`：用于中转部署产物的 Bucket 名称。
+- `OSS_ENDPOINT`：Bucket 所在地域的 OSS 外网 Endpoint（例如 `oss-cn-hangzhou.aliyuncs.com`），需要能从 GitHub Actions 和部署服务器两侧访问。
+- `SERVERCHAN_SENDKEY`（可选）：配置后部署成功/失败会通过 Server 酱推送微信通知。
+
+建议额外在 OSS 控制台为 `deploy/tikviews/` 这个前缀配置一条 1~2 天后自动删除的生命周期规则，作为工作流清理步骤失败时的兜底。
+
 ## 登录密码
 
 访问前端需要输入 4 位数字密码才能进入项目，密码通过后端 `APP_PASSWORD` 环境变量配置，默认值为 `1122`。部署时可在 `~/tikviews-release/.env` 中设置：
