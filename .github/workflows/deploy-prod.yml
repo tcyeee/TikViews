@@ -54,6 +54,7 @@ jobs:
       # URL; the actual bytes move over OSS's network.
       - name: Upload release to OSS
         id: oss
+        timeout-minutes: 15
         env:
           OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
@@ -70,7 +71,18 @@ jobs:
           key = os.environ["OSS_OBJECT_KEY"]
           auth = oss2.Auth(os.environ["OSS_ACCESS_KEY_ID"], os.environ["OSS_ACCESS_KEY_SECRET"])
           bucket = oss2.Bucket(auth, os.environ["OSS_ENDPOINT"], os.environ["OSS_BUCKET"])
-          bucket.put_object_from_file(key, "release.tar.gz")
+          # Multipart upload in parallel chunks — the runner-to-OSS hop is
+          # high-latency, so one giant single-threaded PUT (the old
+          # put_object_from_file) could take 10+ minutes even for a small
+          # release tarball.
+          oss2.resumable_upload(
+              bucket,
+              key,
+              "release.tar.gz",
+              multipart_threshold=10 * 1024 * 1024,
+              part_size=5 * 1024 * 1024,
+              num_threads=4,
+          )
           # 1 hour TTL: long enough for the SSH deploy step, short enough that
           # a leaked URL (e.g. in Actions debug logs) stops working quickly.
           print(bucket.sign_url("GET", key, 3600))
@@ -80,7 +92,12 @@ jobs:
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "key=$OSS_KEY" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy on server
+      # Backend and frontend are deployed as separate steps (each with its own
+      # id and health check) so a failure in one doesn't get reported as a
+      # single undifferentiated "deploy failed" — see the split Notify steps
+      # below, which key off steps.deploy_backend/deploy_frontend.outcome.
+      - name: Deploy backend
+        id: deploy_backend
         uses: appleboy/ssh-action@v1.2.0
         env:
           DOWNLOAD_URL: ${{ steps.oss.outputs.url }}
@@ -99,7 +116,31 @@ jobs:
 
             cd "$HOME/tikviews-release"
             mv backend/build/libs/backend.jar backend.jar
-            docker compose -f deploy/compose.prod.yml up -d --build --remove-orphans
+            docker compose -f deploy/compose.prod.yml up -d --build backend
+            ok=0
+            for i in $(seq 1 30); do
+              # /api/ping is explicitly public (see AuthFilter), so it works
+              # as an unauthenticated health check.
+              if docker compose -f deploy/compose.prod.yml exec -T backend wget -qO- http://127.0.0.1:3001/api/ping >/dev/null 2>&1; then ok=1; break; fi
+              sleep 2
+            done
+            if [ "$ok" != 1 ]; then
+              docker compose -f deploy/compose.prod.yml logs backend --tail=100
+              exit 1
+            fi
+
+      - name: Deploy frontend
+        id: deploy_frontend
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_SSH_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd "$HOME/tikviews-release"
+            docker compose -f deploy/compose.prod.yml up -d --build --remove-orphans frontend
             ok=0
             for i in $(seq 1 30); do
               # frontend has no host port published (shared nginx proxies to it
@@ -108,7 +149,7 @@ jobs:
               sleep 2
             done
             if [ "$ok" != 1 ]; then
-              docker compose -f deploy/compose.prod.yml logs --tail=100
+              docker compose -f deploy/compose.prod.yml logs frontend --tail=100
               exit 1
             fi
 
@@ -135,10 +176,12 @@ jobs:
           bucket.delete_object(os.environ["OSS_OBJECT_KEY"])
           PY
 
-      # Push a WeChat notification via Server酱 once the deploy + health check pass.
-      # Set the SERVERCHAN_SENDKEY repo secret to enable; without it this step is a no-op.
-      - name: Notify success (Server酱)
-        if: success()
+      # Push separate WeChat notifications via Server酱 for the backend and
+      # frontend deploy results, so a failure in one isn't buried inside a
+      # single combined message. Set SERVERCHAN_SENDKEY to enable; without it
+      # these steps are no-ops.
+      - name: Notify backend success (Server酱)
+        if: steps.deploy_backend.outcome == 'success'
         env:
           SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
@@ -152,12 +195,12 @@ jobs:
           DESP=$(printf '**Commit**: `%s`\n\n**Message**: %s\n\n[查看运行记录](%s)' \
             "${GITHUB_SHA:0:7}" "$COMMIT_MSG" "$RUN_URL")
           curl -fsS "https://sctapi.ftqq.com/${SENDKEY}.send" \
-            --data-urlencode "title=✅ tikviews 部署成功" \
+            --data-urlencode "title=✅ tikviews 后端部署成功" \
             --data-urlencode "desp=$DESP" >/dev/null
           echo "Notification sent."
 
-      - name: Notify failure (Server酱)
-        if: failure()
+      - name: Notify backend failure (Server酱)
+        if: steps.deploy_backend.outcome == 'failure'
         env:
           SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -166,5 +209,52 @@ jobs:
           if [ -z "${SENDKEY:-}" ]; then exit 0; fi
           DESP=$(printf '**Commit**: `%s`\n\n[查看失败日志](%s)' "${GITHUB_SHA:0:7}" "$RUN_URL")
           curl -fsS "https://sctapi.ftqq.com/${SENDKEY}.send" \
-            --data-urlencode "title=❌ tikviews 部署失败" \
+            --data-urlencode "title=❌ tikviews 后端部署失败" \
+            --data-urlencode "desp=$DESP" >/dev/null || true
+
+      - name: Notify frontend success (Server酱)
+        if: steps.deploy_frontend.outcome == 'success'
+        env:
+          SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SENDKEY:-}" ]; then
+            echo "SERVERCHAN_SENDKEY not set — skipping notification."
+            exit 0
+          fi
+          DESP=$(printf '**Commit**: `%s`\n\n**Message**: %s\n\n[查看运行记录](%s)' \
+            "${GITHUB_SHA:0:7}" "$COMMIT_MSG" "$RUN_URL")
+          curl -fsS "https://sctapi.ftqq.com/${SENDKEY}.send" \
+            --data-urlencode "title=✅ tikviews 前端部署成功" \
+            --data-urlencode "desp=$DESP" >/dev/null
+          echo "Notification sent."
+
+      - name: Notify frontend failure (Server酱)
+        if: steps.deploy_frontend.outcome == 'failure'
+        env:
+          SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SENDKEY:-}" ]; then exit 0; fi
+          DESP=$(printf '**Commit**: `%s`\n\n[查看失败日志](%s)' "${GITHUB_SHA:0:7}" "$RUN_URL")
+          curl -fsS "https://sctapi.ftqq.com/${SENDKEY}.send" \
+            --data-urlencode "title=❌ tikviews 前端部署失败" \
+            --data-urlencode "desp=$DESP" >/dev/null || true
+
+      # Covers failures before either deploy step ran (build/upload stage),
+      # which the backend/frontend-specific notifications above don't see.
+      - name: Notify failure (pre-deploy, Server酱)
+        if: failure() && steps.deploy_backend.outcome == 'skipped'
+        env:
+          SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SENDKEY:-}" ]; then exit 0; fi
+          DESP=$(printf '**Commit**: `%s`\n\n[查看失败日志](%s)' "${GITHUB_SHA:0:7}" "$RUN_URL")
+          curl -fsS "https://sctapi.ftqq.com/${SENDKEY}.send" \
+            --data-urlencode "title=❌ tikviews 部署失败（构建/上传阶段）" \
             --data-urlencode "desp=$DESP" >/dev/null || true
